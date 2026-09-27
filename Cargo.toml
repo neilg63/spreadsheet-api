@@ -1,0 +1,25 @@
+[package]
+name = "spreadsheet-api"
+version = "0.1.0"
+edition = "2024"
+description = "Upload spreadsheets, map their worksheets to JSON with a versioned schema, and serve them as queryable Web endpoints backed by SurrealDB."
+
+[dependencies]
+spreadsheet-to-json = "0.5.0"
+axum = { version = "0.8", features = ["multipart", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "limit", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+surrealdb = { version = "3.3", features = ["kv-surrealkv", "kv-mem"] }
+dotenvy = "0.15"
+async-channel = "2"
+uuid = { version = "1", features = ["v7"] }
+enclose-strings = { version = "0.3.0", features = ["extract"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+rust_xlsxwriter = "0.89"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
