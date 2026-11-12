@@ -1,4 +1,5 @@
-//! Records behind the dataset endpoints. Each worksheet becomes:
+//! Queries behind the dataset endpoints; the records themselves are in `models`. Each
+//! worksheet becomes:
 //!
 //!   collection (stable, named) ── api_schema ── api_schema_version (+ mapping)
 //!        └── dataset (one per upload of that sheet) ── dataset_rows
@@ -6,49 +7,19 @@
 //! Re-uploading a sheet whose collection already exists reuses that collection's latest
 //! schema version, so the same field mapping and primary key apply automatically.
 
-use std::path::PathBuf;
-
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
     config::config,
     db::{Database, run, run_last, run_one},
     error::{ApiError, ApiResult},
-    sheet::{mapping::MappingDoc, spec::FieldSpec},
+    models::{Allowance, CollectionInfo, DatasetInfo, FieldSpec, Me, VersionInfo},
+    sheet::mapping::MappingDoc,
 };
-
-/// An external identity, `<issuer>/<external id>`, e.g. `google/1098...` or `system/local`.
-#[derive(Debug, Clone)]
-pub struct Me {
-    pub issuer: String,
-    pub external_id: String,
-}
-
-impl Me {
-    pub fn parse(user_ref: &str) -> ApiResult<Self> {
-        let user_ref = user_ref.trim();
-        match user_ref.split_once('/') {
-            Some((issuer, external_id)) if !issuer.is_empty() && !external_id.is_empty() => Ok(Me {
-                issuer: issuer.to_string(),
-                external_id: external_id.to_string(),
-            }),
-            _ => Err(ApiError::BadRequest("user references look like <issuer>/<id>, e.g. google/10983".into())),
-        }
-    }
-
-    pub fn key(&self) -> Value {
-        json!([self.issuer, self.external_id])
-    }
-
-    pub fn owns(&self, owner: &[String]) -> bool {
-        owner.len() == 2 && owner[0] == self.issuer && owner[1] == self.external_id
-    }
-}
 
 /// Registers the principal on first contact and refreshes its activity otherwise.
 /// Returns the principal's plan allowance.
-pub async fn touch_principal(db: &Database, me: &Me) -> ApiResult<Value> {
+pub async fn touch_principal(db: &Database, me: &Me) -> ApiResult<Allowance> {
     let sql = "
         LET $iss = type::record('issuers', $issuer);
         IF $iss.name = NONE { THROW 'Unknown issuer: ' + $issuer };
@@ -56,19 +27,17 @@ pub async fn touch_principal(db: &Database, me: &Me) -> ApiResult<Value> {
         LET $p = type::record('principals', [$issuer, $ext]);
         IF $p.created_at = NONE {
             CREATE $p CONTENT { issuer: $iss, external_id: $ext };
-            IF $plan { UPDATE $p SET plan = type::record('plans', $plan) };
         } ELSE {
             UPDATE $p SET last_seen_at = time::now();
         };
         IF $p.status = 'blocked' { THROW 'This account is blocked' };
         RETURN fn::allowance($p);";
-    let is_default_user = config().default_user_ref.trim() == format!("{}/{}", me.issuer, me.external_id);
-    let plan = config().default_user_plan.clone().filter(|_| is_default_user).unwrap_or_default();
-    let vars = json!({ "issuer": me.issuer, "ext": me.external_id, "plan": plan });
-    run_last(db, sql, vars).await.map_err(|e| match e {
+    let vars = json!({ "issuer": me.issuer, "ext": me.external_id });
+    let allowance = run_last(db, sql, vars).await.map_err(|e| match e {
         ApiError::Rejected(message) => ApiError::Forbidden(message),
         other => other,
-    })
+    })?;
+    serde_json::from_value(allowance).map_err(|e| ApiError::Internal(format!("unexpected allowance: {e}")))
 }
 
 pub async fn plan_features(db: &Database, owner: &[String]) -> ApiResult<Vec<String>> {
@@ -81,35 +50,30 @@ pub async fn plan_features(db: &Database, owner: &[String]) -> ApiResult<Vec<Str
     Ok(serde_json::from_value(features).unwrap_or_default())
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn create_upload(
-    db: &Database,
-    me: &Me,
-    id: &str,
-    filename: &str,
-    storage_key: &str,
-    content_type: Option<&str>,
-    size: u64,
-    sheets: &[String],
-) -> ApiResult<()> {
+/// A stored source file, before its record exists.
+pub struct NewUpload<'a> {
+    pub id: &'a str,
+    pub filename: &'a str,
+    pub storage_key: &'a str,
+    pub content_type: Option<&'a str>,
+    pub size: u64,
+    /// `file` (multipart), `url` (downloaded) or `transfer` (copied from the shared volume)
+    pub source_kind: &'a str,
+}
+
+pub async fn create_upload(db: &Database, me: &Me, upload: &NewUpload<'_>, sheets: &[String]) -> ApiResult<()> {
     let sql = "CREATE type::record('uploads', $id) CONTENT {
-            owner: type::record('principals', $me), filename: $filename, storage_key: $key,
-            size_bytes: $size, sheets: $sheets
-        } RETURN NONE;
-        IF $content_type { UPDATE type::record('uploads', $id) SET content_type = $content_type };";
+            owner: type::record('principals', $me), source_kind: $kind, filename: $filename,
+            storage_key: $key, size_bytes: $size, sheets: $sheets,
+            content_type: IF $content_type { $content_type } ELSE { NONE }
+        } RETURN NONE;";
     let vars = json!({
-        "id": id, "me": me.key(), "filename": filename, "key": storage_key,
-        "size": size, "sheets": sheets, "content_type": content_type.unwrap_or_default(),
+        "id": upload.id, "me": me.key(), "kind": upload.source_kind, "filename": upload.filename,
+        "key": upload.storage_key, "size": upload.size, "sheets": sheets,
+        "content_type": upload.content_type.unwrap_or_default(),
     });
     run(db, sql, vars).await?;
     Ok(())
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct CollectionInfo {
-    pub id: String,
-    pub name: String,
-    pub schema_id: Option<String>,
 }
 
 const COLLECTION_FIELDS: &str =
@@ -169,24 +133,6 @@ async fn set_schema_description(db: &Database, schema_id: &str, description: &st
     Ok(())
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct VersionInfo {
-    pub id: String,
-    pub version: i64,
-    pub status: String,
-    pub definition: Value,
-}
-
-impl VersionInfo {
-    pub fn doc(&self) -> MappingDoc {
-        mapping_from_definition(&self.definition)
-    }
-}
-
-pub fn mapping_from_definition(definition: &Value) -> MappingDoc {
-    definition.get("x-mapping").and_then(|m| serde_json::from_value(m.clone()).ok()).unwrap_or_default()
-}
-
 pub async fn latest_version(db: &Database, schema_id: &str) -> ApiResult<Option<VersionInfo>> {
     let row = run_one(
         db,
@@ -196,29 +142,6 @@ pub async fn latest_version(db: &Database, schema_id: &str) -> ApiResult<Option<
     )
     .await?;
     Ok(row.and_then(|r| serde_json::from_value(r).ok()))
-}
-
-/// The per-version mapping row: the source-column view of the mapping document.
-fn mapping_row(doc: &MappingDoc, sheet: Option<&str>, header_row: Option<usize>) -> Value {
-    let columns: Vec<Value> = doc
-        .fields
-        .iter()
-        .map(|f| {
-            let mut column = json!({ "column": f.source, "path": f.path.clone().unwrap_or_else(|| f.source.clone()) });
-            if let Some(format) = f.format.clone().or_else(|| f.field_type.map(|t| format!("{t:?}").to_lowercase())) {
-                column["transform"] = json!(format);
-            }
-            if let Some(default) = &f.default {
-                column["default"] = default.clone();
-            }
-            column
-        })
-        .collect();
-    let mut row = json!({ "name": "default", "columns": columns, "header_row": header_row.unwrap_or(1) });
-    if let Some(sheet) = sheet {
-        row["sheet"] = json!(sheet);
-    }
-    row
 }
 
 /// Creates the next draft version of a schema, with its mapping row.
@@ -260,10 +183,6 @@ pub async fn update_draft_version(
     Ok(())
 }
 
-pub fn new_mapping_row(doc: &MappingDoc, sheet: Option<&str>, header_row: Option<usize>) -> Value {
-    mapping_row(doc, sheet, header_row)
-}
-
 /// Is this version a draft that only `dataset_id` uses, so it can be edited in place?
 pub async fn version_is_private_draft(db: &Database, version_id: &str, dataset_id: &str) -> ApiResult<bool> {
     let result = run_last(
@@ -277,6 +196,7 @@ pub async fn version_is_private_draft(db: &Database, version_id: &str, dataset_i
     Ok(result.as_bool().unwrap_or(false))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_dataset(
     db: &Database,
     me: &Me,
@@ -285,7 +205,9 @@ pub async fn create_dataset(
     upload_id: &str,
     sheet: Option<&str>,
     version_id: &str,
+    client_ip: Option<&str>,
 ) -> ApiResult<()> {
+    // client_ip feeds the schema's per-IP import quota for anonymous principals
     let sql = "
         LET $coll = type::record('collections', $collection);
         LET $v = type::record('api_schema_versions', $version);
@@ -295,12 +217,13 @@ pub async fn create_dataset(
             upload: type::record('uploads', $upload),
             schema_version: $v,
             mapping: (SELECT VALUE id FROM mappings WHERE schema_version = $v LIMIT 1)[0],
-            series: math::max(array::push((SELECT VALUE series FROM datasets WHERE collection = $coll), 0)) + 1
-        } RETURN NONE;
-        IF $sheet { UPDATE type::record('datasets', $id) SET sheet = $sheet };";
+            series: math::max(array::push((SELECT VALUE series FROM datasets WHERE collection = $coll), 0)) + 1,
+            sheet: IF $sheet { $sheet } ELSE { NONE },
+            client_ip: IF $ip { $ip } ELSE { NONE }
+        } RETURN NONE;";
     let vars = json!({
         "id": id, "owner": me.key(), "collection": collection_id, "upload": upload_id,
-        "version": version_id, "sheet": sheet.unwrap_or_default(),
+        "version": version_id, "sheet": sheet.unwrap_or_default(), "ip": client_ip.unwrap_or_default(),
     });
     run(db, sql, vars).await?;
     Ok(())
@@ -325,38 +248,6 @@ pub async fn retarget_dataset(db: &Database, dataset_id: &str, version_id: &str,
     Ok(())
 }
 
-/// Everything the dataset endpoints need about one dataset, in one read.
-#[derive(Debug, Clone, Deserialize)]
-pub struct DatasetInfo {
-    pub id: String,
-    pub owner: Vec<String>,
-    pub status: String,
-    pub sheet: Option<String>,
-    pub series: i64,
-    pub error: Option<String>,
-    pub num_rows: i64,
-    pub num_invalid: i64,
-    pub imported_at: Option<String>,
-    pub created_at: String,
-    pub mapping_deadline: Option<String>,
-    pub expires_at: Option<String>,
-    pub upload_id: Option<String>,
-    pub storage_key: Option<String>,
-    pub purged_at: Option<String>,
-    pub sheets: Option<Vec<String>>,
-    pub filename: Option<String>,
-    pub collection_id: String,
-    pub collection_name: String,
-    pub primary_key: Option<Vec<String>>,
-    pub current_id: Option<String>,
-    pub version_id: String,
-    pub version: i64,
-    pub version_status: String,
-    pub definition: Value,
-    pub field_spec: Option<Vec<FieldSpec>>,
-    pub schema_id: String,
-}
-
 const DATASET_FIELDS: &str = "record::id(id) AS id, record::id(owner) AS owner, status, sheet, series, error,
     num_rows, num_invalid, imported_at, created_at, mapping_deadline, expires_at,
     IF upload { record::id(upload) } AS upload_id, upload.storage_key AS storage_key,
@@ -366,60 +257,6 @@ const DATASET_FIELDS: &str = "record::id(id) AS id, record::id(owner) AS owner, 
     record::id(schema_version) AS version_id, schema_version.version AS version,
     schema_version.status AS version_status, schema_version.definition AS definition,
     schema_version.field_spec AS field_spec, record::id(schema_version.schema) AS schema_id";
-
-impl DatasetInfo {
-    pub fn sheet_index(&self) -> u32 {
-        match (&self.sheet, &self.sheets) {
-            (Some(sheet), Some(sheets)) => sheets.iter().position(|s| s == sheet).unwrap_or(0) as u32,
-            _ => 0,
-        }
-    }
-
-    pub fn doc(&self) -> MappingDoc {
-        mapping_from_definition(&self.definition)
-    }
-
-    pub fn field_spec(&self) -> &[FieldSpec] {
-        self.field_spec.as_deref().unwrap_or_default()
-    }
-
-    /// The uploaded source file, while it still exists.
-    pub fn source_path(&self) -> Option<PathBuf> {
-        if self.purged_at.is_some() {
-            return None;
-        }
-        let path = config().upload_dir.join(self.storage_key.as_deref()?);
-        path.is_file().then_some(path)
-    }
-
-    pub fn require_source(&self) -> ApiResult<PathBuf> {
-        self.source_path().ok_or_else(|| {
-            ApiError::Conflict("the source file for this dataset is no longer available; upload the spreadsheet again".into())
-        })
-    }
-
-    pub fn summary(&self) -> Value {
-        json!({
-            "id": self.id,
-            "name": self.collection_name,
-            "sheet": self.sheet,
-            "status": self.status,
-            "collection": { "id": self.collection_id, "name": self.collection_name, "current": self.current_id },
-            "series": self.series,
-            "schema_version": { "id": self.version_id, "version": self.version, "status": self.version_status },
-            "primary_key": self.primary_key.clone().unwrap_or_default(),
-            "num_rows": self.num_rows,
-            "num_invalid": self.num_invalid,
-            "error": self.error,
-            "filename": self.filename,
-            "source_available": self.source_path().is_some(),
-            "created_at": self.created_at,
-            "imported_at": self.imported_at,
-            "mapping_deadline": self.mapping_deadline,
-            "expires_at": self.expires_at,
-        })
-    }
-}
 
 pub async fn get_dataset(db: &Database, id: &str) -> ApiResult<DatasetInfo> {
     let sql = format!("SELECT {DATASET_FIELDS} FROM datasets WHERE id = type::record('datasets', $id);");
@@ -480,10 +317,42 @@ pub fn remove_upload_file(storage_key: &str) {
 
 /// Expires and purges records via the schema's fn::sweep, then deletes purged files.
 pub async fn sweep(db: &Database) -> ApiResult<usize> {
+    run(
+        db,
+        "DELETE auth_sessions WHERE expires_at < time::now(); DELETE auth_states WHERE expires_at < time::now();",
+        json!({}),
+    )
+    .await?;
     let keys = run_last(db, "RETURN fn::sweep();", json!({})).await?;
     let keys: Vec<String> = serde_json::from_value(keys).unwrap_or_default();
     for key in &keys {
         remove_upload_file(key);
     }
     Ok(keys.len())
+}
+
+/// Moves what a guest made into the account they just signed in to: collections whose
+/// names the account doesn't already use, with their datasets and schemas, and every
+/// upload. Expiry dates are recomputed from the account's plan. Returns the number of
+/// collections moved; anything left behind expires with the guest.
+pub async fn claim_guest_data(db: &Database, guest: &Me, account: &Me) -> ApiResult<u64> {
+    let sql = "
+        LET $g = type::record('principals', $guest);
+        LET $u = type::record('principals', $user);
+        LET $limits = fn::effective_plan($u).limits;
+        LET $expires = IF $limits.dataset_ttl != NONE { time::now() + $limits.dataset_ttl } ELSE { NONE };
+        LET $deadline = IF $limits.mapping_window != NONE { time::now() + $limits.mapping_window } ELSE { NONE };
+        LET $taken = SELECT VALUE name FROM collections WHERE owner = $u;
+        LET $moved = (UPDATE collections SET owner = $u, expires_at = $expires
+            WHERE owner = $g AND name NOTINSIDE $taken RETURN VALUE id);
+        -- selected first: SurrealDB 3.3 doesn't follow collection.owner inside UPDATE ... WHERE
+        LET $datasets = SELECT VALUE id FROM datasets WHERE owner = $g AND collection.owner = $u;
+        UPDATE $datasets SET owner = $u, expires_at = $expires,
+            mapping_deadline = IF status = 'mapping' { $deadline } ELSE { mapping_deadline } RETURN NONE;
+        LET $schemas_taken = SELECT VALUE name FROM api_schemas WHERE owner = $u;
+        UPDATE api_schemas SET owner = $u WHERE owner = $g AND name NOTINSIDE $schemas_taken RETURN NONE;
+        UPDATE uploads SET owner = $u WHERE owner = $g RETURN NONE;
+        RETURN array::len($moved);";
+    let moved = run_last(db, sql, json!({ "guest": guest.key(), "user": account.key() })).await?;
+    Ok(moved.as_u64().unwrap_or(0))
 }

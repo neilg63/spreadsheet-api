@@ -473,6 +473,29 @@ impl ResolvedMapping {
 }
 
 impl MappingDoc {
+    /// The parts of the document beyond `source`, i.e. what reshapes the output rather than
+    /// how the sheet is read.
+    pub fn customised_parts(&self) -> Vec<&'static str> {
+        let mut parts = vec![];
+        let mut flag = |used: bool, name: &'static str| {
+            if used {
+                parts.push(name);
+            }
+        };
+        flag(self.title.is_some(), "title");
+        flag(self.description.is_some(), "description");
+        flag(self.collection.is_some(), "collection");
+        flag(!self.primary_key.is_empty(), "primary_key");
+        flag(!self.fields.is_empty(), "fields");
+        flag(!self.patterns.is_empty(), "patterns");
+        flag(!self.exclude.is_empty(), "exclude");
+        flag(!self.exclude_paths.is_empty(), "exclude_paths");
+        flag(self.filter.is_some(), "filter");
+        flag(self.omit_nulls, "omit_nulls");
+        flag(self.unmapped == Unmapped::Drop, "unmapped");
+        parts
+    }
+
     /// Validates the document on its own, before any file is read.
     pub fn validate(&self) -> MappingResult<()> {
         let mut errors = vec![];

@@ -1,53 +1,100 @@
 pub mod datasets;
 
+use std::sync::Arc;
+
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, FromRequestParts},
-    http::{HeaderName, Method, request::Parts},
+    extract::{DefaultBodyLimit, State},
+    http::{HeaderName, HeaderValue, Method, header},
+    middleware,
     routing::{get, patch, post},
 };
 use serde_json::{Value, json};
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::{AllowOrigin, Any, CorsLayer},
     trace::TraceLayer,
 };
 
-use crate::{config::config, db::Database, error::ApiError, store::Me};
+use crate::{
+    auth::{self, AccountKind, AuthMode, AuthSettings, Caller, oauth, rate_limit::RateLimiter},
+    config::config,
+    db::Database,
+    error::ApiError,
+};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Database,
+    pub auth: Arc<AuthSettings>,
+    /// For OAuth token exchanges and profile reads (no redirects, as OAuth requires).
+    pub http: reqwest::Client,
+    /// For `{"url": ...}` uploads: redirects only to allowed hosts.
+    pub fetch: reqwest::Client,
+    pub limiter: Arc<RateLimiter>,
 }
 
-/// The calling principal, from the `X-User-Ref` header (`<issuer>/<id>`). Until the
-/// external account system is wired in, requests without one act as DEFAULT_USER_REF.
-pub struct Caller(pub Me);
+impl AppState {
+    pub fn new(db: Database, auth: AuthSettings) -> Self {
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .expect("HTTP client");
+        let hosts = auth.url_hosts.clone();
+        let fetch = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                let allowed = hosts.is_empty()
+                    || attempt.url().host_str().is_some_and(|h| hosts.iter().any(|a| a.eq_ignore_ascii_case(h)));
+                if attempt.previous().len() >= 5 || !allowed { attempt.stop() } else { attempt.follow() }
+            }))
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .expect("HTTP client");
+        let limiter = Arc::new(RateLimiter::new(auth.rate_limit_per_minute));
+        AppState { db, auth: Arc::new(auth), http, fetch, limiter }
+    }
 
-impl<S: Send + Sync> FromRequestParts<S> for Caller {
-    type Rejection = ApiError;
-
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let header = parts.headers.get("x-user-ref").and_then(|v| v.to_str().ok()).filter(|v| !v.trim().is_empty());
-        let user_ref = header.map(str::to_string).unwrap_or_else(|| config().default_user_ref.clone());
-        Ok(Caller(Me::parse(&user_ref)?))
+    /// Upload cap for this caller: guests get the smaller demo limit.
+    pub fn max_upload_bytes(&self, caller: &Caller) -> usize {
+        match caller.kind {
+            AccountKind::Guest => self.auth.guest_max_upload_bytes.min(config().max_upload_bytes),
+            _ => config().max_upload_bytes,
+        }
     }
 }
 
 pub fn router(state: AppState) -> Router {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
+    let mut cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::OPTIONS])
-        .allow_headers([axum::http::header::CONTENT_TYPE, HeaderName::from_static("x-user-ref")]);
-    Router::new()
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, HeaderName::from_static("x-user-ref")])
+        .expose_headers([header::RETRY_AFTER]);
+    cors = if state.auth.cors_origins.is_empty() {
+        cors.allow_origin(Any)
+    } else {
+        // a frontend on another origin sends the session cookie, which needs explicit origins
+        let origins: Vec<HeaderValue> = state.auth.cors_origins.iter().filter_map(|o| o.parse().ok()).collect();
+        cors.allow_origin(AllowOrigin::list(origins)).allow_credentials(true)
+    };
+    let mut routes = Router::new()
         .route("/", get(welcome))
         .route("/mapping/options", get(mapping_options))
+        .route("/auth/me", get(oauth::me))
         .route("/datasets", get(datasets::list))
         .route("/datasets/upload", post(datasets::upload))
         .route("/datasets/{id}", get(datasets::show))
+        .route("/datasets/{id}/export", get(datasets::export))
         .route("/datasets/{id}/preview", get(datasets::preview))
         .route("/datasets/{id}/configure", patch(datasets::configure))
-        .route("/datasets/{id}/import", patch(datasets::import))
+        .route("/datasets/{id}/import", patch(datasets::import));
+    if state.auth.mode == AuthMode::Demo {
+        routes = routes
+            .route("/auth/{provider}/login", get(oauth::login))
+            .route("/auth/{provider}/callback", get(oauth::callback))
+            .route("/auth/logout", post(oauth::logout));
+    }
+    routes
         .fallback(not_found)
+        .layer(middleware::from_fn_with_state(state.clone(), auth::rate_limit))
         .layer(DefaultBodyLimit::max(config().max_upload_bytes + 1024 * 1024))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -58,21 +105,38 @@ async fn not_found() -> ApiError {
     ApiError::NotFound("no such route; GET / lists them".into())
 }
 
-async fn welcome() -> Json<Value> {
+async fn welcome(State(state): State<AppState>) -> Json<Value> {
+    let auth = match state.auth.mode {
+        AuthMode::Demo => json!({
+            "mode": "demo",
+            "accounts": "guests are identified by network and browser; sign in for upload history and custom mappings",
+            "login": state.auth.providers.iter().map(|p| format!("/auth/{}/login", p.name)).collect::<Vec<_>>(),
+            "guest_max_upload_bytes": state.auth.guest_max_upload_bytes.min(config().max_upload_bytes),
+            "rate_limit_per_minute": state.auth.rate_limit_per_minute,
+        }),
+        AuthMode::Service => json!({
+            "mode": "service",
+            "user_header": state.auth.user_header.as_str(),
+            "service_token": state.auth.service_token.is_some(),
+            "intake": ["multipart", "url", if state.auth.shared_dir.is_some() { "path" } else { "path (disabled)" }],
+        }),
+    };
     Json(json!({
         "title": "Spreadsheet API",
         "version": env!("CARGO_PKG_VERSION"),
         "description": "Upload spreadsheets, map each worksheet to JSON with a versioned schema, and query the imported rows.",
         "max_upload_bytes": config().max_upload_bytes,
         "preview_rows": config().preview_rows,
-        "auth": "Send X-User-Ref: <issuer>/<id> to act as a principal",
+        "auth": auth,
         "routes": [
-            { "method": "POST", "path": "/datasets/upload", "body": "multipart: file, source (optional JSON)", "description": "Validate and store a spreadsheet; one dataset per worksheet with a 30-row preview each" },
+            { "method": "POST", "path": "/datasets/upload", "body": "multipart: file, source (optional JSON); service mode also JSON {\"url\" | \"path\", \"filename\"?, \"source\"?}", "description": "Validate and store a spreadsheet; one dataset per worksheet with a 30-row preview each" },
             { "method": "GET", "path": "/datasets/{id}/preview", "description": "Re-read the source file with the saved mapping" },
             { "method": "PATCH", "path": "/datasets/{id}/configure", "query": { "dry_run": "true to preview without saving" }, "body": "mapping document (see /mapping/options)", "description": "Save the field mapping as a schema version" },
             { "method": "PATCH", "path": "/datasets/{id}/import", "body": "{\"mode\": \"replace\" | \"upsert\"} (optional)", "description": "Import every row; the source file is deleted once all its worksheets are imported" },
             { "method": "GET", "path": "/datasets/{id}", "query": { "filter": "JSON, MongoDB style or rule tree", "sort": "price,-name", "q": "full-text search", "limit": "page size", "start": "offset", "page": "1-based page", "include_invalid": "true to include rows that failed validation" }, "description": "Query imported rows" },
-            { "method": "GET", "path": "/datasets", "description": "The caller's datasets" },
+            { "method": "GET", "path": "/datasets/{id}/export", "query": { "format": "json (default) or jsonl", "include_invalid": "true to include invalid rows" }, "description": "Download every imported row" },
+            { "method": "GET", "path": "/datasets", "description": "The caller's datasets (not for guests)" },
+            { "method": "GET", "path": "/auth/me", "description": "Account type, profile, allowance and sign-in links" },
             { "method": "GET", "path": "/mapping/options", "description": "Option values for building mapping and filter widgets" }
         ]
     }))

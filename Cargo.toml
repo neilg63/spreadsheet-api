@@ -1,8 +1,10 @@
 [package]
 name = "spreadsheet-api"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Upload spreadsheets, map their worksheets to JSON with a versioned schema, and serve them as queryable Web endpoints backed by SurrealDB."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/neilg63/spreadsheet-api"
 
 [dependencies]
 spreadsheet-to-json = "0.5.0"
@@ -14,7 +16,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 surrealdb = { version = "3.3", features = ["kv-surrealkv", "kv-mem"] }
 dotenvy = "0.15"
 async-channel = "2"
-uuid = { version = "1", features = ["v7"] }
+uuid = { version = "1", features = ["v4", "v7"] }
+oauth2 = { version = "5", default-features = false, features = ["reqwest", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+sha2 = "0.10"
 enclose-strings = { version = "0.3.0", features = ["extract"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

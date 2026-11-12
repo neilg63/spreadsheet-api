@@ -18,7 +18,8 @@ use crate::{
         reader,
         spec::{FieldSpec, SpecInference, json_schema},
     },
-    store::{self, DatasetInfo},
+    models::{DatasetInfo, DatasetStatus},
+    store,
 };
 
 const BATCH_SIZE: usize = 1000;
@@ -203,10 +204,10 @@ impl Progress {
 
 /// Runs the import; on failure the dataset is marked `failed` with the reason.
 pub async fn import(db: &Database, dataset: &DatasetInfo, request: ImportRequest) -> ApiResult<Value> {
-    if dataset.status == "importing" {
+    if dataset.status == DatasetStatus::Importing {
         return Err(ApiError::Conflict("this dataset is already being imported".into()));
     }
-    if dataset.status == "expired" {
+    if dataset.status == DatasetStatus::Expired {
         return Err(ApiError::Conflict("the mapping window for this upload has closed; upload the file again".into()));
     }
     let path = dataset.require_source()?;

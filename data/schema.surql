@@ -4,12 +4,15 @@
 --          `type::record(...)` -> `type::thing(...)`,
 --          `FULLTEXT ANALYZER` -> `SEARCH ANALYZER`.
 --
--- Authentication and account management live in a separate system.
--- This service only knows *principals*: external identities referenced
--- as "<issuer>/<external id>", each on a plan with limits and credits.
+-- Callers are *principals*, referenced as "<issuer>/<external id>":
+--   guest/<hash>     anonymous demo visitors (IP + user agent, salted)
+--   github/<id>, google/<sub>   free accounts from a social login (demo)
+--   service/<ref>    tenants forwarded by the primary API (microservice)
+-- Each principal is on a plan with limits. Credits and costs are kept in
+-- the model but unused: there are no paid accounts.
 -- The service connects as a system user and enforces ownership itself.
 --
---   issuers ─< principals ─┬─ social_users
+--   issuers ─< principals ─┬─ social_users, auth_sessions
 --                          ├─< credit_ledger, usage_events
 --                          ├─< uploads (source files, purged on schedule)
 --                          ├─< api_schemas ─< api_schema_versions ─< mappings
@@ -272,7 +275,7 @@ DEFINE EVENT collections_on_create ON collections WHEN $event = 'CREATE' THEN {
         THROW 'Collection limit reached for your plan';
     };
     IF $after.primary_key != NONE AND 'links' NOT IN $plan.features {
-        THROW 'Keys and links require a paid plan';
+        THROW 'Keys and links are not included in your plan';
     };
     UPDATE $after.id SET expires_at =
         IF $plan.limits.dataset_ttl != NONE { time::now() + $plan.limits.dataset_ttl };
@@ -280,7 +283,7 @@ DEFINE EVENT collections_on_create ON collections WHEN $event = 'CREATE' THEN {
 
 
 -- ---------------------------------------------------------------------
--- links_to  (PK/FK between collections; paid plans)
+-- links_to  (PK/FK between collections; plans with 'links')
 --   RELATE collections:sales_gb->links_to->collections:countries
 --       SET name = 'country', from_path = 'country_code';
 --   Resolving a row's parent (uses the dataset_rows_pk index):
@@ -303,7 +306,7 @@ DEFINE EVENT links_to_rules ON links_to WHEN $event IN ['CREATE', 'UPDATE'] THEN
         THROW 'Foreign key must have as many columns as the target primary key';
     };
     IF 'links' NOT IN fn::effective_plan($after.in.owner).features {
-        THROW 'Links require a paid plan';
+        THROW 'Links are not included in your plan';
     };
 };
 
@@ -450,6 +453,37 @@ DEFINE EVENT endpoints_on_create ON endpoints WHEN $event = 'CREATE' THEN {
     UPDATE $after.id SET expires_at =
         IF $plan.limits.endpoint_ttl != NONE { time::now() + $plan.limits.endpoint_ttl };
 };
+
+
+-- =====================================================================
+-- LOGIN SESSIONS  (demo mode; the microservice relies on nginx + the primary API)
+-- =====================================================================
+
+-- A browser session after a social login. The cookie holds a random token;
+-- only its SHA-256 is stored, so the table can't be replayed if it leaks.
+DEFINE TABLE auth_sessions SCHEMAFULL;
+
+DEFINE FIELD principal    ON auth_sessions TYPE record<principals> REFERENCE ON DELETE CASCADE;
+DEFINE FIELD token_hash   ON auth_sessions TYPE string;
+DEFINE FIELD user_agent   ON auth_sessions TYPE option<string>;
+DEFINE FIELD ip           ON auth_sessions TYPE option<string>;
+DEFINE FIELD created_at   ON auth_sessions TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD last_seen_at ON auth_sessions TYPE datetime DEFAULT time::now();
+DEFINE FIELD expires_at   ON auth_sessions TYPE datetime;
+
+DEFINE INDEX auth_sessions_token ON auth_sessions FIELDS token_hash UNIQUE;
+DEFINE INDEX auth_sessions_principal ON auth_sessions FIELDS principal;
+
+-- A login in progress: OAuth state, PKCE verifier and where to return.
+-- Single use; the guest it started from is carried over into the account.
+DEFINE TABLE auth_states SCHEMAFULL;
+
+DEFINE FIELD provider      ON auth_states TYPE string;
+DEFINE FIELD pkce_verifier ON auth_states TYPE string;
+DEFINE FIELD return_to     ON auth_states TYPE string;
+DEFINE FIELD guest         ON auth_states TYPE option<record<principals>>;
+DEFINE FIELD created_at    ON auth_states TYPE datetime DEFAULT time::now() READONLY;
+DEFINE FIELD expires_at    ON auth_states TYPE datetime DEFAULT time::now() + 10m;
 
 
 -- =====================================================================
@@ -611,47 +645,50 @@ DEFINE FUNCTION fn::find($endpoint: record<endpoints>, $q: object) {
 
 
 -- =====================================================================
--- SEED DATA  (limits from the spec; paid values are placeholders)
+-- SEED DATA
+--   Two account types in the demo service, plus the microservice tenant:
+--     guest       anonymous visitors, keyed by a salted hash of IP + user agent
+--     registered  free accounts from a GitHub or Google login
+--     service     tenants forwarded by the primary API (AUTH_MODE=service)
+--   Limits are starting points; tune them to the demo's capacity.
 -- =====================================================================
-UPSERT plans:anon CONTENT {
-    name: 'Anonymous', rank: 0,
+UPSERT plans:guest CONTENT {
+    name: 'Guest', rank: 0,
     limits: {
-        imports_per_hour: 3, max_rows_per_import: 250,
-        max_collections: 3, max_endpoints: 3,
-        mapping_window: 15m, source_retention: 15m,
-        dataset_ttl: 1h, endpoint_ttl: 1h, keep_revisions: 1
+        imports_per_hour: 5, max_rows_per_import: 1000,
+        max_collections: 5, max_endpoints: 3,
+        mapping_window: 30m, source_retention: 30m,
+        dataset_ttl: 1d, endpoint_ttl: 1d, keep_revisions: 1
     },
     features: ['filter', 'sort'],
     monthly_credits: 0, costs: {}
 };
 
-UPSERT plans:basic CONTENT {
-    name: 'Basic', rank: 1,
+UPSERT plans:registered CONTENT {
+    name: 'Registered', rank: 1,
     limits: {
-        imports_per_hour: 10, max_rows_per_import: 5000,
-        max_collections: 20, max_endpoints: 10,
-        mapping_window: 1h, source_retention: 1h,     -- not in the spec: adjust
-        dataset_ttl: 1d, endpoint_ttl: 1d, keep_revisions: 1
+        imports_per_hour: 30, max_rows_per_import: 20000,
+        max_collections: 50, max_endpoints: 20,
+        mapping_window: 7d, source_retention: 1d,
+        dataset_ttl: 90d, endpoint_ttl: 90d, keep_revisions: 2
     },
-    features: ['filter', 'sort', 'search', 'custom_endpoints'],
+    features: ['filter', 'sort', 'search', 'custom_endpoints', 'custom_slug', 'custom_schema', 'links'],
     monthly_credits: 0, costs: {}
 };
 
-UPSERT plans:pro CONTENT {
-    name: 'Pro', rank: 2,
+UPSERT plans:service CONTENT {
+    name: 'Service', rank: 2,
     limits: {
-        imports_per_hour: 60, max_rows_per_import: 100000,
+        imports_per_hour: 100000, max_rows_per_import: 5000000,
         mapping_window: NONE, source_retention: 7d,
         dataset_ttl: NONE, endpoint_ttl: NONE, keep_revisions: 5
     },
     features: ['filter', 'sort', 'search', 'custom_endpoints', 'custom_slug', 'custom_schema',
                'links', 'auto_refresh', 'charts_maps', 'private_endpoints'],
-    monthly_credits: 10000,
-    costs: { import: 0, rows_imported: 10, api_request: 1, storage_mb_day: 5 }
+    monthly_credits: 0, costs: {}
 };
 
-UPSERT issuers:device    CONTENT { name: 'Browser (anonymous)', trust: 'anonymous', default_plan: plans:anon, principal_ttl: 1d };
-UPSERT issuers:google    CONTENT { name: 'Google',              trust: 'social',    default_plan: plans:basic };
-UPSERT issuers:microsoft CONTENT { name: 'Microsoft',           trust: 'social',    default_plan: plans:basic };
-UPSERT issuers:mainusers CONTENT { name: 'Main UAC',            trust: 'managed',   default_plan: plans:basic };
-UPSERT issuers:system    CONTENT { name: 'Partner systems',     trust: 'system',    default_plan: plans:basic };
+UPSERT issuers:guest   CONTENT { name: 'Guest',           trust: 'anonymous', default_plan: plans:guest, principal_ttl: 1d, enabled: true };
+UPSERT issuers:github  CONTENT { name: 'GitHub',          trust: 'social',    default_plan: plans:registered, enabled: true };
+UPSERT issuers:google  CONTENT { name: 'Google',          trust: 'social',    default_plan: plans:registered, enabled: true };
+UPSERT issuers:service CONTENT { name: 'Primary API',     trust: 'system',    default_plan: plans:service, enabled: true };

@@ -31,27 +31,68 @@ fn fingerprint(text: &str) -> String {
     format!("{hash:016x}")
 }
 
-/// Applies data/schema.surql to a fresh database. On an existing one it only warns when
-/// the file has changed since it was applied: `DEFINE` statements are not idempotent and
-/// re-running index definitions would rebuild them, so changes need a deliberate migration.
+/// Applies data/schema.surql to a fresh database, then any files in data/migrations
+/// (applied in name order, each once) to databases created from an earlier schema.
+/// A fresh database is already current, so it records every migration as applied.
 async fn ensure_schema(db: &Database) -> ApiResult<()> {
     let path = dotenvy::var("SCHEMA_PATH").unwrap_or_else(|_| "data/schema.surql".to_string());
     let schema = std::fs::read_to_string(Path::new(&path))
         .map_err(|e| ApiError::Internal(format!("cannot read schema file {path}: {e}")))?;
     let hash = fingerprint(&schema);
+    let migrations = migration_files(Path::new(&path))?;
+    let names: Vec<&str> = migrations.iter().map(|(name, _)| name.as_str()).collect();
     let tables = run(db, "RETURN object::keys((INFO FOR DB).tables);", json!({})).await?;
     let has_schema = tables[0].as_array().is_some_and(|t| t.iter().any(|name| name == "plans"));
     if !has_schema {
         tracing::info!("applying {path} to a new database");
         run(db, &schema, json!({})).await?;
-        run(db, "UPSERT service_meta:schema CONTENT { hash: $hash, applied_at: time::now() };", json!({ "hash": hash })).await?;
+        run(
+            db,
+            "UPSERT service_meta:schema CONTENT { hash: $hash, applied_at: time::now() };
+            UPSERT service_meta:migrations CONTENT { applied: $names };",
+            json!({ "hash": hash, "names": names }),
+        )
+        .await?;
         return Ok(());
     }
-    let applied = run(db, "RETURN service_meta:schema.hash;", json!({})).await?;
-    if applied[0].as_str() != Some(hash.as_str()) {
-        tracing::warn!("{path} differs from the schema this database was created with; apply the changes as a migration");
+    let applied = run_last(db, "RETURN service_meta:migrations.applied ?? [];", json!({})).await?;
+    let applied: Vec<String> = serde_json::from_value(applied).unwrap_or_default();
+    for (name, sql) in migrations.iter().filter(|(name, _)| !applied.contains(name)) {
+        tracing::info!("applying migration {name}");
+        run(db, &format!("BEGIN;\n{sql}\nCOMMIT;"), json!({}))
+            .await
+            .map_err(|e| ApiError::Internal(format!("migration {name} failed: {e}")))?;
+        run(
+            db,
+            "UPSERT service_meta:migrations MERGE { applied: array::union(service_meta:migrations.applied ?? [], [$name]) };
+            UPSERT service_meta:schema MERGE { hash: $hash, applied_at: time::now() };",
+            json!({ "name": name, "hash": hash }),
+        )
+        .await?;
+    }
+    let current = run_last(db, "RETURN service_meta:schema.hash;", json!({})).await?;
+    if current.as_str() != Some(hash.as_str()) {
+        tracing::warn!("{path} has changed since this database was set up; add the changes as a file in data/migrations");
     }
     Ok(())
+}
+
+/// `(file name, contents)` of every .surql file in the migrations directory, sorted.
+fn migration_files(schema_path: &Path) -> ApiResult<Vec<(String, String)>> {
+    let dir = dotenvy::var("MIGRATIONS_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| schema_path.with_file_name("migrations"));
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Ok(vec![]) };
+    let mut files = vec![];
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "surql") {
+            let name = entry.file_name().to_string_lossy().to_string();
+            files.push((name, std::fs::read_to_string(&path)?));
+        }
+    }
+    files.sort();
+    Ok(files)
 }
 
 /// Runs a (possibly multi-statement) query with bound variables and returns each

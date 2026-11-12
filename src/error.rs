@@ -11,6 +11,8 @@ use crate::sheet::mapping::MappingError;
 #[derive(Debug)]
 pub enum ApiError {
     BadRequest(String),
+    /// No acceptable identity (service mode without the forwarded reference or token).
+    Unauthorized(String),
     NotFound(String),
     Forbidden(String),
     Conflict(String),
@@ -19,6 +21,10 @@ pub enum ApiError {
     Unprocessable(String),
     /// The mapping document doesn't fit the request or the worksheet.
     InvalidMapping(Vec<MappingError>),
+    /// Rate limited; retry after this many seconds.
+    TooManyRequests(u64),
+    /// A sign-in provider or source URL failed.
+    BadGateway(String),
     Internal(String),
 }
 
@@ -28,12 +34,15 @@ impl ApiError {
     fn parts(&self) -> (StatusCode, &'static str, &str) {
         match self {
             Self::BadRequest(m) => (StatusCode::BAD_REQUEST, "bad_request", m),
+            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, "unauthorized", m),
             Self::NotFound(m) => (StatusCode::NOT_FOUND, "not_found", m),
             Self::Forbidden(m) => (StatusCode::FORBIDDEN, "forbidden", m),
             Self::Conflict(m) => (StatusCode::CONFLICT, "conflict", m),
             Self::Rejected(m) => (StatusCode::UNPROCESSABLE_ENTITY, "rejected", m),
             Self::Unprocessable(m) => (StatusCode::UNPROCESSABLE_ENTITY, "unprocessable", m),
             Self::InvalidMapping(_) => (StatusCode::UNPROCESSABLE_ENTITY, "invalid_mapping", "the mapping has errors"),
+            Self::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "rate_limited", "too many requests; slow down"),
+            Self::BadGateway(m) => (StatusCode::BAD_GATEWAY, "bad_gateway", m),
             Self::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, "internal", m),
         }
     }
@@ -55,7 +64,11 @@ impl IntoResponse for ApiError {
         if let Self::InvalidMapping(errors) = &self {
             body["errors"] = json!(errors);
         }
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+        if let Self::TooManyRequests(seconds) = self {
+            response.headers_mut().insert(axum::http::header::RETRY_AFTER, seconds.into());
+        }
+        response
     }
 }
 

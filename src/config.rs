@@ -16,12 +16,6 @@ pub struct Config {
     /// Hard ceiling on `limit` for GET /datasets/{id}.
     pub max_page_size: u32,
     pub default_page_size: u32,
-    /// Principal used when a request carries no `X-User-Ref` header, e.g. "system/local".
-    /// Until the external account system is integrated, this is how local clients identify.
-    pub default_user_ref: String,
-    /// Plan given to the DEFAULT_USER_REF principal when it is first created (e.g. "pro"
-    /// for local development). Every other principal gets its issuer's default plan.
-    pub default_user_plan: Option<String>,
     pub sweep_interval_secs: u64,
 }
 
@@ -36,11 +30,10 @@ impl Config {
             db_database: var("DB_DATABASE", "api"),
             upload_dir: PathBuf::from(var("UPLOAD_DIR", "data/uploads")),
             max_upload_bytes: parse_size(&var("MAX_UPLOAD_SIZE", "50MB")).unwrap_or(50 * 1024 * 1024),
+            // identity, sign-in and rate-limit settings: auth::AuthSettings
             preview_rows: num("PREVIEW_ROWS", 30) as u32,
             max_page_size: num("MAX_PAGE_SIZE", 1000) as u32,
             default_page_size: num("DEFAULT_PAGE_SIZE", 100) as u32,
-            default_user_ref: var("DEFAULT_USER_REF", "system/local"),
-            default_user_plan: dotenvy::var("DEFAULT_USER_PLAN").ok().filter(|p| !p.trim().is_empty()),
             sweep_interval_secs: num("SWEEP_INTERVAL_SECS", 60),
         }
     }

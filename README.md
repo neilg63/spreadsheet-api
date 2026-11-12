@@ -14,7 +14,7 @@ cargo run --release
 ```
 
 Formats: `xlsx`, `xlsm`, `xls`, `xlsb`, `ods`, `csv`, `tsv`, and semicolon-separated values
-(`.ssv`, or `;`-delimited `.csv`: delimiters are detected from content).
+(`.ssv`, or `;`-delimited `.csv`; delimiters are detected from the content).
 
 ## Flow
 
@@ -25,14 +25,10 @@ Formats: `xlsx`, `xlsm`, `xls`, `xlsb`, `ods`, `csv`, `tsv`, and semicolon-separ
 | 3 | `PATCH /datasets/{id}/import` | Imports every row. The source file is deleted once all of its worksheets are imported. |
 | 4 | `GET /datasets/{id}` | Returns the imported rows, with filtering, sorting, full-text search and pagination. |
 
-Also available: `GET /datasets` (the caller's datasets), `GET /mapping/options` (the value
-lists for the mapping and filter widgets), and `GET /` (a list of all routes).
-
-Callers identify themselves with `X-User-Ref: <issuer>/<id>` (for example `google/10983`). The
-issuer must exist in `issuers`. Principals are created on first contact and get their
-issuer's default plan. A request with no header acts as `DEFAULT_USER_REF`. Plan limits and
-features come from the schema, so the plan decides the rows per import, the imports per
-hour, and whether primary keys, filtering, sorting and search are available.
+Also available: `GET /datasets/{id}/export?format=json|jsonl` (every row, streamed as a
+download), `GET /datasets` (the caller's upload history), `GET /auth/me` (account type,
+profile, allowance and sign-in links), `GET /mapping/options` (the value lists for the mapping
+and filter widgets), and `GET /` (a list of all routes and the active mode).
 
 ```bash
 curl -F file=@catalogue.xlsx localhost:3000/datasets/upload
@@ -43,6 +39,70 @@ curl -G localhost:3000/datasets/$ID --data-urlencode 'filter={"price.amount":{"$
 
 Upload also accepts an optional multipart field `source` holding JSON source options for every
 sheet, for example `{"decimal_comma": true}`.
+
+## Deployments and accounts
+
+`AUTH_MODE` picks one of two deployments. Plan limits and features come from the schema
+(`plans:guest`, `plans:registered`, `plans:service`), so the account decides the rows per
+import, imports per hour, retention, and which mapping and query features are available.
+
+### `AUTH_MODE=demo` (default): public demo service
+
+| | Guest | Registered |
+|---|---|---|
+| Who | Anyone, identified as `guest/<hash>` of the client address and user agent, salted with `GUEST_SALT` | Signed in with GitHub or Google; `github/<id>`, `google/<sub>` |
+| Upload | Up to `GUEST_MAX_UPLOAD_SIZE` (2 MB) | Up to `MAX_UPLOAD_SIZE` |
+| Convert and preview | Upload, fix header rows and other `source` options, import, query, export | Same |
+| Customise the API | No: any other mapping part returns `422` with "sign in to customise" | Fields, patterns, primary keys and upserts, filters, target collections |
+| Upload history (`GET /datasets`) | No (`403`) | Yes |
+| Kept | A day after last activity | 90 days |
+
+Identity headers are ignored, so callers cannot choose their own identity. Sign-in uses the OAuth
+authorization code flow with PKCE, implemented here with the `oauth2` crate:
+
+```
+GET  /auth/{github|google}/login?return_to=/path   redirect to the provider
+GET  /auth/{github|google}/callback                 sets the session cookie, redirects to FRONTEND_URL + path
+POST /auth/logout
+GET  /auth/me
+```
+
+Sessions are opaque random tokens in an HttpOnly `sheet_session` cookie; only their SHA-256 is
+stored (`auth_sessions`). When a guest signs in, their uploads move into the account. Each
+client address gets `RATE_LIMIT_PER_MINUTE` requests (uploads and imports cost 10) and then
+`429` with `Retry-After`, on top of the schema's per-principal and per-IP import quotas.
+
+Register OAuth apps with the callback `PUBLIC_URL/auth/github/callback` (and `/google/`), then
+set `GITHUB_CLIENT_ID`/`_SECRET` and `GOOGLE_CLIENT_ID`/`_SECRET`. Behind nginx, set
+`CLIENT_IP_HEADER=X-Real-IP` and have nginx overwrite it (`proxy_set_header X-Real-IP
+$remote_addr;`); without a proxy, leave it unset so the socket address is used, since clients
+could otherwise spoof it. If the frontend is on another origin, list it in `CORS_ORIGINS` so
+the cookie is sent.
+
+### `AUTH_MODE=service`: microservice behind nginx and the primary API
+
+There are no login routes or rate limits here; nginx and the primary API control access. The
+primary API forwards the tenant or user in `X-User-Ref` (`acme/42` becomes `service/acme/42`),
+and datasets are scoped to it. Set `SERVICE_TOKEN` to also require `Authorization: Bearer
+<token>` (or `X-Service-Token`). Files arrive in any of three ways:
+
+```bash
+# multipart, as in demo mode
+curl -H 'X-User-Ref: acme/42' -F file=@sales.xlsx localhost:3000/datasets/upload
+# a file the primary API left in SHARED_UPLOAD_DIR (copied; the original stays)
+curl -H 'X-User-Ref: acme/42' -H 'content-type: application/json' -d '{"path": "inbox/sales.xlsx"}' localhost:3000/datasets/upload
+# a URL to download (limit hosts with URL_UPLOAD_HOSTS)
+curl -H 'X-User-Ref: acme/42' -H 'content-type: application/json' -d '{"url": "https://files.internal/sales.xlsx", "source": {"decimal_comma": true}}' localhost:3000/datasets/upload
+```
+
+Paths are resolved (including `..` and symlinks) and must stay inside `SHARED_UPLOAD_DIR`.
+For local development, `DEFAULT_USER_REF` gives requests without the header an identity.
+
+### Schema changes
+
+`data/schema.surql` sets up a new database. Changes for existing databases go in
+`data/migrations/*.surql`, which are applied once each, in name order, inside a transaction.
+A new database records them all as applied.
 
 ## Mapping document
 
@@ -84,18 +144,18 @@ typos get caught. Validation errors come back together, each tied to the widget 
 | `source.no_header`, `source.column_names` | `header` / `header_numbered` / `a1` / `numbered` (`--omit-header`, `-c`, `-A`, `-R`) |
 | `source.decimal_comma`, `source.datetime` | `full` / `simple` / `date` / `time` / `hm` (`--euro-number-format`, `--date-only` …) |
 | `source.max_rows` | Stops the import after this many rows (`-m`). The plan's row cap always applies. |
-| `fields[].source` | The column, given as its natural key, header text, A1 letter or column number |
+| `fields[].source` | The column, given as its natural key, header text, A1 letter or column number. |
 | `fields[].path` | The output path: `price`, `size.width` (nested) or `tags[]` (appended to a list). `key` accepts a raw KeySegment tree for anything more complex. |
-| `fields[].type` / `format` / `precision` | `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `time`, `array`, or any library format such as `d2`, `truthy(si,no)`, `dt:%d/%m/%Y`, `int[](\|)` (`-k col\|fmt`) |
-| `fields[].default`, `datetime`, `decimal_comma` | Per-column overrides |
+| `fields[].type` / `format` / `precision` | `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `time`, `array`, or any library format such as `d2`, `truthy(si,no)`, `dt:%d/%m/%Y`, `int[](\|)` (`-k col\|fmt`). |
+| `fields[].default`, `datetime`, `decimal_comma` | Per-column overrides. |
 | `fields[].required`, `filterable`, `sortable`, `searchable`, `description` | Schema and query metadata. Rows missing a required value are imported but flagged invalid. |
-| `patterns` | Placeholder patterns such as `file_[n]`→`files[]`, `sales_{region}`→`sales.{region}`, `sales_[year]`→`sales[].{year}{amount}` |
-| `exclude`, `exclude_paths` | Drop columns or ranges, or drop nested output paths (`-k -col`, `-K`) |
+| `patterns` | Placeholder patterns such as `file_[n]`→`files[]`, `sales_{region}`→`sales.{region}`, `sales_[year]`→`sales[].{year}{amount}`. |
+| `exclude`, `exclude_paths` | Drop columns or ranges, or drop nested output paths (`-k -col`, `-K`). |
 | `filter` | Only import rows that match. Accepts either a rule tree (as above) or spread-cli text such as `"age >= 18 and name ILIKE 'a%'"` (`-f`). |
-| `omit_nulls` | Drop null values (`-X`) |
-| `unmapped` | Set to `drop` to output only the listed columns |
+| `omit_nulls` | Drop null values (`-X`). |
+| `unmapped` | Set to `drop` to output only the listed columns. |
 | `primary_key` | Output paths that identify a row. See the upsert section below. |
-| `collection` | Import into an existing collection, given by id or name, for example when this month's file has a new name |
+| `collection` | Import into an existing collection, given by ID or name, for example when this month's file has a new name. |
 
 Each save creates or updates a row in `api_schema_versions`. Its `definition` holds a JSON
 Schema (draft 2020-12) of one output row, with OpenAPI-style extensions: `x-source` on each
@@ -129,7 +189,7 @@ creates a new dataset in that collection, and when it finishes it becomes the co
 | `limit`, `start` / `page` | Pagination. `limit` is capped at `MAX_PAGE_SIZE`. |
 | `include_invalid` | `true` includes rows that failed validation |
 
-MongoDB operators: `$eq $ne $gt $gte $lt $lte $in $nin $all $size $exists $regex`(+`$options`)
+MongoDB operators: `$eq $ne $gt $gte $lt $lte $in $nin $all $size $exists $regex` (with `$options`)
 `$contains $startsWith $endsWith $between $has $and $or $nor $not`. Field paths are validated
 before use, and every value is sent as a bound parameter.
 
@@ -142,10 +202,28 @@ src/sheet/spec.rs        type inference, field_spec, JSON Schema
 src/sheet/key_pattern.rs, filter_pattern.rs   ported verbatim from spread-cli
 src/importer.rs          batched import, primary keys, validation, upsert merge
 src/query.rs             filter/sort/search → parameterised SurrealQL
-src/store.rs, db.rs      records and queries against data/schema.surql
+src/models/              one typed model per table in data/schema.surql
+src/store.rs, db.rs      queries against data/schema.surql
 src/routes/              HTTP handlers
+src/auth/                demo/service identity, OAuth sign-in, sessions, rate limiting
+data/migrations/         schema changes for existing databases
+docs/models.md           the models, their fields and rules, and where they appear in the API
 ```
 
-`cargo test` runs the unit tests and an end-to-end test (upload → configure → import → query →
-upsert) against an in-memory database. `cargo run --example make_fixtures` regenerates
-`tests/fixtures`.
+`cargo test` runs the unit tests and end-to-end tests against an in-memory database: upload →
+configure → import → query → upsert, service-mode tenants and URL/path intake, guest limits and
+rate limiting, and a full GitHub-style sign-in against a mock OAuth provider.
+`cargo run --example make_fixtures` regenerates `tests/fixtures`.
+
+## Licence
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENCE-APACHE](LICENCE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT licence ([LICENCE-MIT](LICENCE-MIT) or <https://opensource.org/licenses/MIT>)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion
+in this work, as defined in the Apache-2.0 licence, shall be dual licensed as above, without
+any additional terms or conditions.
