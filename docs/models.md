@@ -251,7 +251,7 @@ Published versions can't change, so a later configure creates the next version.
 | `schema` | → `api_schemas` | |
 | `version` | int ≥ 1 | Unique per schema |
 | `status` | `draft` \| `published` \| `deprecated` | |
-| `definition` | object | JSON Schema (draft 2020-12) of one output row, with `x-source` per property, `x-primary-key` and `x-mapping` (the full mapping document) |
+| `definition` | object | JSON Schema (draft 2020-12) of one output row, with `x_source` per property, `x_primary_key` and `x_mapping` (the full mapping document) |
 | `field_spec` | `FieldSpec[]` | See below |
 | `created_at`, `updated_at` | datetime | |
 
@@ -275,7 +275,7 @@ API: `schema_version: { "id", "version", "status" }` on datasets, `definition` f
 
 The source-column view of a version's mapping document, one row (`name: "default"`) per
 version. The complete mapping document that clients send (`MappingDoc`, see the
-[README](../README.md#mapping-document)) is stored in the version's `definition["x-mapping"]`.
+[README](../README.md#mapping-document)) is stored in the version's `definition["x_mapping"]`.
 This table is an index of it.
 
 | Field | Type | Notes |

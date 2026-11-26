@@ -28,3 +28,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rust_xlsxwriter = "0.89"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+
+# A smaller release binary: the embedded SurrealDB engine is most of its size. Stripping
+# removes the symbol table (panic backtraces then show addresses, not names); fat LTO on
+# one codegen unit removes duplicated generic code, at the cost of a much slower build.
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1

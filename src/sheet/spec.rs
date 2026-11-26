@@ -38,7 +38,8 @@ fn value_type(value: &Value) -> Option<&'static str> {
         Value::Number(n) if n.is_f64() => "number",
         Value::Number(_) => "integer",
         Value::String(s) if is_date(s) => "date",
-        Value::String(s) if s.len() > 10 && is_date(&s[..10]) && s.as_bytes()[10] == b'T' => "datetime",
+        // `get` and not a slice: byte 10 may fall inside a multi-byte character ("0.5¢/kg ...")
+        Value::String(s) if s.as_bytes().get(10) == Some(&b'T') && s.get(..10).is_some_and(is_date) => "datetime",
         Value::String(_) => "string",
         Value::Array(_) => "array",
     })
@@ -177,9 +178,10 @@ fn property_at<'a>(node: &'a mut Value, segments: &[&str]) -> Option<&'a mut Val
     property_at(child, rest)
 }
 
-/// JSON Schema (draft 2020-12) for one output row, with OpenAPI-style `x-` extensions:
-/// `x-source` (the column a property comes from), `x-primary-key`, and `x-mapping`
-/// (the complete mapping document, so a version is self-describing).
+/// JSON Schema (draft 2020-12) for one output row, with three keywords of this API's own,
+/// snake-cased like every other machine name here: `x_source` (the column a property
+/// comes from), `x_primary_key`, and `x_mapping` (the complete mapping document, so a
+/// version is self-describing).
 pub fn json_schema(specs: &[FieldSpec], doc: &MappingDoc, resolved: Option<&ResolvedMapping>) -> Value {
     let mut root = json!({ "type": "object", "properties": {} });
     for spec in specs {
@@ -191,7 +193,7 @@ pub fn json_schema(specs: &[FieldSpec], doc: &MappingDoc, resolved: Option<&Reso
             let field = &doc.fields[*index];
             let segments: Vec<&str> = path.split('.').collect();
             if let Some(obj) = property_at(&mut root, &segments).and_then(Value::as_object_mut) {
-                obj.insert("x-source".into(), json!(field.source));
+                obj.insert("x_source".into(), json!(field.source));
                 if let Some(description) = &field.description {
                     obj.insert("description".into(), json!(description));
                 }
@@ -212,15 +214,24 @@ pub fn json_schema(specs: &[FieldSpec], doc: &MappingDoc, resolved: Option<&Reso
     }
     definition.append(obj);
     if !doc.primary_key.is_empty() {
-        definition.insert("x-primary-key".into(), json!(doc.primary_key));
+        definition.insert("x_primary_key".into(), json!(doc.primary_key));
     }
-    definition.insert("x-mapping".into(), serde_json::to_value(doc).unwrap_or_default());
+    definition.insert("x_mapping".into(), serde_json::to_value(doc).unwrap_or_default());
     Value::Object(definition)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_text_with_multi_byte_characters_as_strings() {
+        // regression: byte 10 of "123456789¢ ..." is inside the ¢, which a byte slice panics on
+        assert_eq!(value_type(&json!("123456789¢/kg + 5%")), Some("string"));
+        assert_eq!(value_type(&json!("2026-01-0¢T")), Some("string"));
+        assert_eq!(value_type(&json!("2026-01-02T10:00:00")), Some("datetime"));
+        assert_eq!(value_type(&json!("2026-01-02")), Some("date"));
+    }
 
     #[test]
     fn infers_and_merges_types_across_rows() {
@@ -248,6 +259,6 @@ mod tests {
         assert_eq!(schema["properties"]["size"]["properties"]["w"]["type"], "string");
         assert_eq!(schema["properties"]["when"]["format"], "date-time");
         assert_eq!(schema["required"], json!(["sku"]));
-        assert_eq!(schema["x-primary-key"], json!(["sku"]));
+        assert_eq!(schema["x_primary_key"], json!(["sku"]));
     }
 }

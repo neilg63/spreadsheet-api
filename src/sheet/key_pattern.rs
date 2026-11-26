@@ -1,32 +1,28 @@
-//! Ported from spread-cli (https://github.com/neilg63/spreadsheet_to_json_cli, src/key_pattern.rs, MIT)
-//! so the API accepts the same mapping/filter syntax as the CLI. Keep in sync with upstream.
+//! Started as a port of spread-cli's src/key_pattern.rs
+//! (https://github.com/neilg63/spreadsheet_to_json_cli, MIT), and accepts everything
+//! that does. It has since gone further than upstream: a capture may stand anywhere in
+//! the source pattern, there may be several, and a target key may refer to them.
 //!
-//! Parses the three placeholder-capture `--keys` patterns spread-cli supports on top of
-//! the library's plain exact-match `Column` overrides:
+//! Placeholder patterns map every column whose name fits to one place in the output:
 //!
-//! - `file_[n]:files[]` -- sequential columns into a plain array (`KeySegment::PlainArray`)
-//! - `sales_{region}:sales.{region}` -- columns into a dynamic-keyed object (`KeySegment::Object`)
-//! - `sales_[year]:sales[].{year}{amount}` -- columns into an array of `{year, amount}`
-//!   items (`KeySegment::Array` + `KeySegment::InnerObject`)
+//! - `file_[n]` -> `files[]` -- sequential columns into a plain array (`KeySegment::PlainArray`)
+//! - `sales_{region}` -> `sales.{region}` -- columns into an object keyed by the capture
+//! - `sales_[year]` -> `sales[].{year}{amount}` -- columns into an array of
+//!   `{year, amount}` items (`KeySegment::Array` + `KeySegment::InnerObject`)
+//! - `{fuel}_price` -> `price.{fuel}` -- the same, for columns that share an ending
+//! - `{fuel}_price_note_{n}` -> `price_{fuel}` -- a rename that keeps one capture and
+//!   drops the other
 //!
 //! `[name]`/`{name}` in the *source* pattern is a capture: `[]` types it as an integer
 //! (`Identifier::Integer`), `{}` as a string (`Identifier::String`) -- the mnemonic being
 //! JSON's own shape (arrays are int-indexed, objects are string-keyed). The type only
-//! matters when the capture is actually referenced on the target side; a capture used
-//! purely for matching (like `[n]` in `files[]`, never referenced) accepts any suffix
-//! regardless of its bracket type.
+//! matters when the capture is referenced on the target side. `*` and `[]` are an
+//! anonymous capture that nothing refers to: `download_*`, `download_[]`.
 //!
-//! Two shorthands for the common purely-positional case (never referenced on the target
-//! side, so naming it at all is just ceremony): `download_*` (glob-style, probably the
-//! most familiar spelling to anyone who's used a shell) and `download_[]` (empty
-//! brackets, matching the same convention `files[]` already uses on the target side) are
-//! both equivalent to an anonymous, unreferenced `[n]`.
-//!
-//! On the *target* side, a `{name}` matching the capture's own name binds that capture's
-//! value; a `{name}` that *doesn't* match is the leaf -- the cell's own value lands there,
-//! under a field literally named `name`. This needs the real column headers to expand
-//! against (`natural_keys`), which is why this can't run until after a first,
-//! header-only pass -- see `main.rs`.
+//! On the *target* side, `{name}` refers to the capture of that name. Inside an array's
+//! brace group a `{name}` that matches no capture is the leaf -- the cell's own value
+//! lands there, under a field literally named `name`. This needs the real column
+//! headers to expand against (`natural_keys`).
 
 use enclose_strings::SimpleExtract;
 use spreadsheet_to_json::{Column, DateTimeMode, Format, Identifier, KeySegment};
@@ -39,56 +35,140 @@ enum CaptureType {
 }
 
 /// Not a name any target spec would realistically use, so there's no real risk of it
-/// colliding with a genuine `{name}` reference -- but even if it did, referencing an
-/// anonymous capture by this name is harmless (just binds whatever the anonymous match
-/// happened to be), not something worth guarding against.
+/// colliding with a genuine `{name}` reference.
 const ANONYMOUS_CAPTURE: &str = "*";
 
-struct SourcePattern {
-    prefix: String,
-    capture_name: String,
-    capture_type: CaptureType,
+/// One piece of a source pattern: text every matching column shares, or a capture.
+#[derive(Debug, Clone, PartialEq)]
+enum SourcePart {
+    Literal(String),
+    Capture { name: String, capture_type: CaptureType },
 }
 
-/// `None` if `source` has no `[name]`/`{name}`/`*`/`[]` capture at all -- callers fall
-/// back to the existing exact-match `Column` handling for those, unchanged.
-fn parse_source_pattern(source: &str) -> Option<SourcePattern> {
+/// The captures of one matched column, by name, in the order the source pattern has them.
+type Captures = [(String, Identifier)];
+
+fn capture<'a>(captures: &'a Captures, name: &str) -> Option<&'a Identifier> {
+    captures.iter().find(|(n, _)| n == name).map(|(_, id)| id)
+}
+
+/// Splits `source` into literals and captures. A capture may stand anywhere: after the
+/// shared text (`sales_[year]`), before it (`{fuel}_price`), or both
+/// (`{fuel}_price_note_{n}`). `None` if `source` has no capture at all (callers fall back
+/// to exact-match handling), no literal text at all (it would match every column), two
+/// captures with nothing between them (where one ends is undecidable), a named capture
+/// used twice, or an unclosed bracket.
+fn parse_source_pattern(source: &str) -> Option<Vec<SourcePart>> {
     let lower = source.to_lowercase();
-    // Glob-style shorthand for an anonymous, purely-positional capture -- requires a
-    // real prefix before the "*", same as every other form; a bare "*" alone would
-    // match every column in the sheet, almost certainly never what's intended.
-    if let Some(prefix) = lower.strip_suffix('*') {
-        if !prefix.is_empty() {
-            return Some(SourcePattern { prefix: prefix.to_string(), capture_name: ANONYMOUS_CAPTURE.to_string(), capture_type: CaptureType::Str });
-        }
-    }
-    if lower.ends_with(']') {
-        if let Some(open) = lower.find('[') {
-            if open == 0 {
-                return None; // no prefix at all -- same reasoning as the bare "*" guard above
+    let mut parts: Vec<SourcePart> = Vec::new();
+    let mut literal = String::new();
+    let mut rest = lower.as_str();
+    while let Some(ch) = rest.chars().next() {
+        let found = match ch {
+            // Glob-style shorthand for an anonymous, purely positional capture.
+            '*' => Some((ANONYMOUS_CAPTURE.to_string(), CaptureType::Str, 1)),
+            '[' => {
+                let close = rest.find(']')?;
+                let name = &rest[1..close];
+                // "download_[]" is the same anonymous capture as "download_*"
+                Some(if name.is_empty() { (ANONYMOUS_CAPTURE.to_string(), CaptureType::Str, close + 1) } else { (name.to_string(), CaptureType::Int, close + 1) })
             }
-            let name = lower.extract_from_brackets()?;
-            let (capture_name, capture_type) = if name.is_empty() {
-                (ANONYMOUS_CAPTURE.to_string(), CaptureType::Str) // "download_[]" shorthand
-            } else {
-                (name, CaptureType::Int)
-            };
-            return Some(SourcePattern { prefix: lower[..open].to_string(), capture_name, capture_type });
+            '{' => {
+                let close = rest.find('}')?;
+                let name = &rest[1..close];
+                if name.is_empty() {
+                    return None;
+                }
+                Some((name.to_string(), CaptureType::Str, close + 1))
+            }
+            _ => None,
+        };
+        match found {
+            Some((name, capture_type, consumed)) => {
+                if !literal.is_empty() {
+                    parts.push(SourcePart::Literal(std::mem::take(&mut literal)));
+                } else if matches!(parts.last(), Some(SourcePart::Capture { .. })) {
+                    return None;
+                }
+                let repeated = name != ANONYMOUS_CAPTURE && parts.iter().any(|p| matches!(p, SourcePart::Capture { name: n, .. } if *n == name));
+                if repeated {
+                    return None;
+                }
+                parts.push(SourcePart::Capture { name, capture_type });
+                rest = &rest[consumed..];
+            }
+            None => {
+                literal.push(ch);
+                rest = &rest[ch.len_utf8()..];
+            }
         }
     }
-    if lower.ends_with('}') {
-        if let Some(open) = lower.find('{') {
-            let name = lower.extract_from_braces().filter(|n| !n.is_empty())?;
-            return Some(SourcePattern { prefix: lower[..open].to_string(), capture_name: name, capture_type: CaptureType::Str });
-        }
+    if !literal.is_empty() {
+        parts.push(SourcePart::Literal(literal));
     }
-    None
+    let has = |capture: bool| parts.iter().any(|p| matches!(p, SourcePart::Capture { .. }) == capture);
+    (has(true) && has(false)).then_some(parts)
+}
+
+/// Matches `text` against `parts`, pushing each capture's text onto `out` in order.
+/// A capture is never empty and takes as little as it can, so `{a}_x_{b}` splits
+/// `p_x_q_x_r` into `p` and `q_x_r`.
+fn match_parts<'a>(parts: &[SourcePart], text: &'a str, out: &mut Vec<&'a str>) -> bool {
+    let Some((first, rest)) = parts.split_first() else { return text.is_empty() };
+    match first {
+        SourcePart::Literal(literal) => text.strip_prefix(literal.as_str()).is_some_and(|after| match_parts(rest, after, out)),
+        SourcePart::Capture { .. } => match rest.first() {
+            None => {
+                if text.is_empty() {
+                    return false;
+                }
+                out.push(text);
+                true
+            }
+            Some(SourcePart::Literal(literal)) => {
+                for (pos, _) in text.match_indices(literal.as_str()).filter(|(pos, _)| *pos > 0) {
+                    out.push(&text[..pos]);
+                    if match_parts(rest, &text[pos..], out) {
+                        return true;
+                    }
+                    out.pop();
+                }
+                false
+            }
+            Some(SourcePart::Capture { .. }) => false, // parse_source_pattern never produces this
+        },
+    }
+}
+
+/// The captures `natural_key` gives for `parts`, or `None` if it does not match.
+fn capture_values(parts: &[SourcePart], natural_key: &str) -> Option<Vec<(String, Identifier)>> {
+    let mut values = Vec::new();
+    if !match_parts(parts, natural_key, &mut values) {
+        return None;
+    }
+    let captures = parts.iter().filter_map(|p| match p {
+        SourcePart::Capture { name, capture_type } => Some((name, capture_type)),
+        SourcePart::Literal(_) => None,
+    });
+    Some(
+        captures
+            .zip(values)
+            .map(|((name, capture_type), value)| {
+                let id = match capture_type {
+                    CaptureType::Int => Identifier::from_int_str(value),
+                    CaptureType::Str => Identifier::from_string(value),
+                };
+                (name.clone(), id)
+            })
+            .collect(),
+    )
 }
 
 /// One `.`-separated segment of a target-path spec.
 enum TargetToken {
-    /// A plain literal segment -- descend into (or create) a nested object under this
-    /// key. e.g. the "sales" in "sales.{region}".
+    /// A key to descend into (or create), e.g. the "sales" in "sales.{region}", or the
+    /// field itself when it comes last. It may hold `{name}` references to captures,
+    /// filled in per column: `price_{fuel}`.
     Literal(String),
     /// `name[]` -- opens an array. Terminal (`files[]` alone) means `PlainArray`;
     /// followed by a `Braces` segment means `Array` + possibly `InnerObject`.
@@ -98,8 +178,7 @@ enum TargetToken {
     Braces(Vec<String>),
 }
 
-/// Splits `target` on `.` and classifies each segment. `None` if any segment doesn't
-/// parse as one of the three recognised shapes.
+/// Splits `target` on `.` and classifies each segment. `None` if any segment is empty.
 fn parse_target_tokens(target: &str) -> Option<Vec<TargetToken>> {
     target.split('.').map(parse_target_segment).collect()
 }
@@ -111,7 +190,10 @@ fn parse_target_segment(segment: &str) -> Option<TargetToken> {
         }
     }
     if segment.starts_with('{') {
-        return parse_brace_groups(segment).map(TargetToken::Braces);
+        // "{fuel}_price" is not a run of brace groups: it is a key with a reference in it
+        if let Some(groups) = parse_brace_groups(segment) {
+            return Some(TargetToken::Braces(groups));
+        }
     }
     if !segment.is_empty() {
         return Some(TargetToken::Literal(segment.to_string()));
@@ -139,18 +221,38 @@ fn parse_brace_groups(mut segment: &str) -> Option<Vec<String>> {
     if groups.is_empty() { None } else { Some(groups) }
 }
 
-/// Builds the concrete `KeySegment` for one matched column, given its own bound capture
-/// value. `capture_name` is what the source pattern called it (e.g. "region"); a
-/// `{name}` on the target side is a reference to that capture only if `name` matches --
-/// anything else is the leaf, using `name` as a literal field name.
-fn build_key_segment(tokens: &[TargetToken], capture_name: &str, capture_id: &Identifier) -> Option<KeySegment> {
+/// Fills the `{name}` references in a key with the column's captures: `price_{fuel}`
+/// becomes `price_petrol`. `None` if a reference names no capture or a brace is unclosed.
+fn fill_key(template: &str, captures: &Captures) -> Option<String> {
+    let mut key = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        key.push_str(&rest[..open]);
+        let close = open + rest[open..].find('}')?;
+        key.push_str(&capture(captures, &rest[open + 1..close])?.to_string());
+        rest = &rest[close + 1..];
+    }
+    key.push_str(rest);
+    Some(key)
+}
+
+/// Builds the concrete `KeySegment` for one matched column, given its captures. A
+/// `{name}` on the target side is a reference to the capture of that name; inside an
+/// array's brace group, a name that matches no capture is the leaf, a field literally
+/// named `name` that receives the cell's own value.
+fn build_key_segment(tokens: &[TargetToken], captures: &Captures) -> Option<KeySegment> {
     let (first, rest) = tokens.split_first()?;
     match first {
-        TargetToken::Literal(name) => {
-            let next = build_key_segment(rest, capture_name, capture_id)?;
-            Some(KeySegment::Object(Arc::from(name.as_str()), Arc::new(next)))
+        TargetToken::Literal(template) => {
+            let key = fill_key(template, captures)?;
+            if rest.is_empty() {
+                return Some(KeySegment::Simple(Arc::from(key.as_str())));
+            }
+            let next = build_key_segment(rest, captures)?;
+            Some(KeySegment::Object(Arc::from(key.as_str()), Arc::new(next)))
         }
-        TargetToken::ArrayOpen(name) => {
+        TargetToken::ArrayOpen(template) => {
+            let name = fill_key(template, captures)?;
             if rest.is_empty() {
                 return Some(KeySegment::PlainArray(Arc::from(name.as_str())));
             }
@@ -158,78 +260,68 @@ fn build_key_segment(tokens: &[TargetToken], capture_name: &str, capture_id: &Id
             if !rest2.is_empty() {
                 return None; // scoped grammar: nothing follows the array's brace-group segment
             }
-            build_array_with_braces(name, names, capture_name, capture_id)
+            build_array_with_braces(&name, names, captures)
         }
         TargetToken::Braces(names) => {
             if !rest.is_empty() {
                 return None; // braces are only a supported terminal outside an array context
             }
             let [name] = names.as_slice() else { return None };
-            (name == capture_name).then(|| KeySegment::Simple(Arc::from(capture_id.to_string().as_str())))
+            capture(captures, name).map(|id| KeySegment::Simple(Arc::from(id.to_string().as_str())))
         }
     }
 }
 
-/// `names[0]` becomes `Array`'s own discriminator (must be the known capture -- that's
-/// what identifies which real-world entity, e.g. a year, each item represents); any
-/// remaining names chain as `InnerObject` bindings, ending in the first name that
-/// *doesn't* match the capture (the leaf, the cell's own value).
-fn build_array_with_braces(container: &str, names: &[String], capture_name: &str, capture_id: &Identifier) -> Option<KeySegment> {
+/// `names[0]` becomes `Array`'s own discriminator (must be a capture -- that's what
+/// identifies which real-world entity, e.g. a year, each item represents); any remaining
+/// names chain as `InnerObject` bindings, ending in the first name that *isn't* a
+/// capture (the leaf, the cell's own value).
+fn build_array_with_braces(container: &str, names: &[String], captures: &Captures) -> Option<KeySegment> {
     let (first, rest) = names.split_first()?;
-    if first != capture_name {
-        return None;
-    }
-    let chain = build_inner_object_chain(rest, capture_name, capture_id)?;
-    Some(KeySegment::Array(Arc::from(container), capture_id.clone(), Arc::from(first.as_str()), Arc::new(chain)))
+    let id = capture(captures, first)?;
+    let chain = build_inner_object_chain(rest, captures)?;
+    Some(KeySegment::Array(Arc::from(container), id.clone(), Arc::from(first.as_str()), Arc::new(chain)))
 }
 
-fn build_inner_object_chain(names: &[String], capture_name: &str, capture_id: &Identifier) -> Option<KeySegment> {
+fn build_inner_object_chain(names: &[String], captures: &Captures) -> Option<KeySegment> {
     let (name, rest) = names.split_first()?;
-    if name == capture_name {
-        let next = build_inner_object_chain(rest, capture_name, capture_id)?;
-        Some(KeySegment::InnerObject(capture_id.clone(), Arc::from(name.as_str()), Arc::new(next)))
+    if let Some(id) = capture(captures, name) {
+        let next = build_inner_object_chain(rest, captures)?;
+        Some(KeySegment::InnerObject(id.clone(), Arc::from(name.as_str()), Arc::new(next)))
     } else if rest.is_empty() {
         Some(KeySegment::Simple(Arc::from(name.as_str())))
     } else {
-        None // an unrecognised name with more following would need its own captured
-             // value, which a single-capture pattern doesn't have -- not supported
+        None // a name that is no capture, with more following, has no value to bind
     }
 }
 
-/// Expands one placeholder `--keys` entry (`source` containing a `[name]`/`{name}`
-/// capture) against the real, already-known natural column keys, producing one fully
-/// resolved `Column` per matching column -- each with an exact `source_key` and a
-/// concrete (non-templated) `KeySegment`. Returns `None` if `source` has no capture at
-/// all (not a pattern entry) or the parsed target spec doesn't fit one of the three
-/// supported shapes.
+/// Expands one placeholder `--keys` entry (`source` containing at least one capture)
+/// against the real, already-known natural column keys, producing one fully resolved
+/// `Column` per matching column -- each with an exact `source_key` and a concrete
+/// (non-templated) `KeySegment`. Returns `None` if `source` is not a usable pattern or
+/// the target spec doesn't fit a supported shape.
 pub fn expand_pattern_entry(source: &str, target: &str, format: &Format, natural_keys: &[String]) -> Option<Vec<Column>> {
-    let pattern = parse_source_pattern(source)?;
+    let parts = parse_source_pattern(source)?;
     let tokens = parse_target_tokens(target)?;
 
     // Whether build_key_segment succeeds depends only on the template's structure and
-    // capture_name -- never on which value was actually captured -- so a placeholder
-    // identifier validates the whole target spec once, up front. Without this, a
-    // genuinely malformed target (e.g. an array-open not followed by a brace-group)
-    // would only fail inside the per-column filter_map below, where its failure is
-    // silently skipped rather than surfaced -- every column would simply vanish from
-    // the shape check, with zero indication anything was wrong, rather than the clear
-    // error this should be.
-    let placeholder_id = Identifier::from_string("__validate__");
-    build_key_segment(&tokens, &pattern.capture_name, &placeholder_id)?;
+    // the capture names -- never on which values were captured -- so placeholder values
+    // validate the whole target spec once, up front. Without this, a malformed target
+    // would fail per column and every column would silently vanish.
+    let placeholders: Vec<(String, Identifier)> = parts
+        .iter()
+        .filter_map(|p| match p {
+            SourcePart::Capture { name, .. } => Some((name.clone(), Identifier::from_string("__validate__"))),
+            SourcePart::Literal(_) => None,
+        })
+        .collect();
+    build_key_segment(&tokens, &placeholders)?;
 
     let columns: Vec<Column> = natural_keys
         .iter()
         .filter_map(|natural_key| {
-            let remainder = natural_key.strip_prefix(pattern.prefix.as_str())?;
-            if remainder.is_empty() {
-                return None;
-            }
-            let capture_id = match pattern.capture_type {
-                CaptureType::Int => Identifier::from_int_str(remainder),
-                CaptureType::Str => Identifier::from_string(remainder),
-            };
-            let key_segment = build_key_segment(&tokens, &pattern.capture_name, &capture_id)
-                .expect("already validated the same template above");
+            let captures = capture_values(&parts, natural_key)?;
+            let key_segment = build_key_segment(&tokens, &captures).expect("already validated the same template above");
             let mut col = Column::from_source_key_with_format(natural_key, None, format.clone(), None, DateTimeMode::Full, false);
             col.key = Some(key_segment);
             Some(col)
@@ -347,6 +439,69 @@ mod tests {
             }
             other => panic!("expected Array, got {other:?}"),
         }
+    }
+
+    fn strs(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_capture_before_the_shared_text_groups_by_suffix() {
+        let natural_keys = strs(&["petrol_price", "diesel_price", "price", "petrol_tax"]);
+        let cols = expand_pattern_entry("{fuel}_price", "price.{fuel}", &Format::Float, &natural_keys).unwrap();
+        assert_eq!(keys(&cols), strs(&["petrol_price", "diesel_price"]));
+        match cols[1].key.as_ref().unwrap() {
+            KeySegment::Object(key, next) => {
+                assert_eq!(&**key, "price");
+                assert!(matches!(&**next, KeySegment::Simple(k) if &**k == "diesel"));
+            }
+            other => panic!("expected Object, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_captures_at_both_ends_and_a_reference_inside_the_target_key() {
+        let natural_keys = strs(&[
+            "petrol_current_fuel_price_index_numbers_note_1",
+            "solid_fuels_current_fuel_price_index_numbers_note_2",
+            "petrol_real_terms_fuel_price_index_numbers_note_3",
+        ]);
+        let cols =
+            expand_pattern_entry("{fuel}_current_fuel_price_index_numbers_note_{n}", "current_price_{fuel}", &Format::Float, &natural_keys).unwrap();
+        assert_eq!(cols.len(), 2);
+        assert!(matches!(cols[0].key.as_ref().unwrap(), KeySegment::Simple(k) if &**k == "current_price_petrol"));
+        assert!(matches!(cols[1].key.as_ref().unwrap(), KeySegment::Simple(k) if &**k == "current_price_solid_fuels"));
+    }
+
+    #[test]
+    fn test_capture_in_the_middle_and_an_integer_capture_at_the_start() {
+        let natural_keys = strs(&["2024_sales", "2025_sales", "q1_north_total"]);
+        let cols = expand_pattern_entry("[year]_sales", "sales[].{year}{amount}", &Format::Float, &natural_keys).unwrap();
+        assert_eq!(cols.len(), 2);
+        assert!(matches!(cols[0].key.as_ref().unwrap(), KeySegment::Array(c, id, f, _) if &**c == "sales" && *id == Identifier::Integer(2024) && &**f == "year"));
+
+        let cols = expand_pattern_entry("q1_{region}_total", "totals.{region}", &Format::Float, &natural_keys).unwrap();
+        assert_eq!(keys(&cols), strs(&["q1_north_total"]));
+    }
+
+    #[test]
+    fn test_a_capture_takes_as_little_as_it_can_and_is_never_empty() {
+        let parts = parse_source_pattern("{a}_x_{b}").unwrap();
+        let mut out = Vec::new();
+        assert!(match_parts(&parts, "p_x_q_x_r", &mut out));
+        assert_eq!(out, vec!["p", "q_x_r"]);
+        assert!(capture_values(&parts, "_x_r").is_none());
+        assert!(capture_values(&parts, "p_x_").is_none());
+    }
+
+    #[test]
+    fn test_unusable_source_patterns_and_unknown_references_are_rejected() {
+        assert!(parse_source_pattern("{a}{b}_x").is_none()); // nothing between the captures
+        assert!(parse_source_pattern("{a}_x_{a}").is_none()); // the same name twice
+        assert!(parse_source_pattern("{a}").is_none()); // matches every column
+        assert!(parse_source_pattern("x_{a").is_none()); // unclosed
+        let natural_keys = strs(&["petrol_price"]);
+        assert!(expand_pattern_entry("{fuel}_price", "price_{grade}", &Format::Auto, &natural_keys).is_none());
     }
 
     #[test]

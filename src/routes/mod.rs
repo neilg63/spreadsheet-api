@@ -126,12 +126,13 @@ async fn welcome(State(state): State<AppState>) -> Json<Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "description": "Upload spreadsheets, map each worksheet to JSON with a versioned schema, and query the imported rows.",
         "max_upload_bytes": config().max_upload_bytes,
-        "preview_rows": config().preview_rows,
+        "preview_rows": datasets::preview_rows(None),
+        "max_preview_rows": config().max_preview_rows,
         "auth": auth,
         "routes": [
-            { "method": "POST", "path": "/datasets/upload", "body": "multipart: file, source (optional JSON); service mode also JSON {\"url\" | \"path\", \"filename\"?, \"source\"?}", "description": "Validate and store a spreadsheet; one dataset per worksheet with a 30-row preview each" },
-            { "method": "GET", "path": "/datasets/{id}/preview", "description": "Re-read the source file with the saved mapping" },
-            { "method": "PATCH", "path": "/datasets/{id}/configure", "query": { "dry_run": "true to preview without saving" }, "body": "mapping document (see /mapping/options)", "description": "Save the field mapping as a schema version" },
+            { "method": "POST", "path": "/datasets/upload", "query": { "rows": "rows to preview per worksheet" }, "body": "multipart: file, source (optional JSON); service mode also JSON {\"url\" | \"path\", \"filename\"?, \"source\"?}", "description": "Validate and store a spreadsheet; one dataset per worksheet with a preview of each" },
+            { "method": "GET", "path": "/datasets/{id}/preview", "query": { "rows": "rows to preview" }, "description": "Re-read the source file with the saved mapping" },
+            { "method": "PATCH", "path": "/datasets/{id}/configure", "query": { "dry_run": "true to preview without saving", "rows": "rows to preview" }, "body": "mapping document (see /mapping/options)", "description": "Save the field mapping as a schema version" },
             { "method": "PATCH", "path": "/datasets/{id}/import", "body": "{\"mode\": \"replace\" | \"upsert\"} (optional)", "description": "Import every row; the source file is deleted once all its worksheets are imported" },
             { "method": "GET", "path": "/datasets/{id}", "query": { "filter": "JSON, MongoDB style or rule tree", "sort": "price,-name", "q": "full-text search", "limit": "page size", "start": "offset", "page": "1-based page", "include_invalid": "true to include rows that failed validation" }, "description": "Query imported rows" },
             { "method": "GET", "path": "/datasets/{id}/export", "query": { "format": "json (default) or jsonl", "include_invalid": "true to include invalid rows" }, "description": "Download every imported row" },
@@ -183,6 +184,12 @@ async fn mapping_options() -> Json<Value> {
             { "value": "keep", "label": "Keep other columns" },
             { "value": "drop", "label": "Only output mapped columns" }
         ],
+        "preview_rows": {
+            "description": "How many rows a preview returns: pass ?rows= to upload, configure and preview",
+            "default": datasets::preview_rows(None),
+            "max": config().max_preview_rows,
+            "options": datasets::PREVIEW_SIZES.iter().filter(|n| **n <= config().max_preview_rows).collect::<Vec<_>>(),
+        },
         "import_modes": [
             { "value": "replace", "label": "Replace all rows" },
             { "value": "upsert", "label": "Update rows by primary key, keep the rest" }
@@ -192,8 +199,10 @@ async fn mapping_options() -> Json<Value> {
             "append_to_list": "tags[]",
             "patterns": [
                 { "source": "file_[n]", "target": "files[]", "label": "Numbered columns into a list" },
-                { "source": "sales_{region}", "target": "sales.{region}", "label": "Columns into an object keyed by suffix" },
-                { "source": "sales_[year]", "target": "sales[].{year}{amount}", "label": "Columns into a list of objects" }
+                { "source": "sales_{region}", "target": "sales.{region}", "label": "Columns that start the same into an object" },
+                { "source": "{region}_sales", "target": "sales.{region}", "label": "Columns that end the same into an object" },
+                { "source": "sales_[year]", "target": "sales[].{year}{amount}", "label": "Columns into a list of objects" },
+                { "source": "{fuel}_price_note_{n}", "target": "price_{fuel}", "label": "Rename columns, keeping part of the name" }
             ]
         },
         "filter_ops": [

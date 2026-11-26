@@ -1,7 +1,8 @@
 //! Full import of one worksheet into dataset_rows.
 //!
-//! Rows stream from the reader through a bounded channel and are inserted in batches, so
-//! memory stays flat for large sheets. With a primary key, `upsert` mode then carries
+//! Rows stream from the reader through a bounded channel and are inserted in batches,
+//! several at a time (`IMPORT_CONCURRENCY`), so the importer itself holds only a few
+//! thousand rows however large the sheet. With a primary key, `upsert` mode then carries
 //! over the collection's previous rows whose keys the new file doesn't contain; when the
 //! dataset is marked imported, the schema's event makes it the collection's current data.
 
@@ -9,8 +10,10 @@ use std::{collections::HashSet, time::Instant};
 
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+use tokio::task::JoinSet;
 
 use crate::{
+    config::config,
     db::{Database, run, run_last},
     error::{ApiError, ApiResult},
     sheet::{
@@ -24,6 +27,8 @@ use crate::{
 
 const BATCH_SIZE: usize = 1000;
 const MAX_INVALID_SAMPLES: usize = 20;
+/// How often a batch is tried again when its transaction collides with another batch's.
+const MAX_INSERT_ATTEMPTS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -153,6 +158,8 @@ struct Progress {
     invalid_samples: Vec<Value>,
     seen_keys: HashSet<String>,
     inference: SpecInference,
+    /// Batches being inserted: at most `IMPORT_CONCURRENCY` at a time.
+    inserts: JoinSet<ApiResult<()>>,
 }
 
 impl Progress {
@@ -185,21 +192,58 @@ impl Progress {
         self.batch.push(row);
     }
 
+    /// Hands the batch to an insert task. Rows carry their own `row_num`, so batches
+    /// may land in any order; when as many inserts are running as are allowed, this
+    /// waits for one to finish first, which also keeps the reader from running ahead.
     async fn flush(&mut self, db: &Database, dataset_id: &str) -> ApiResult<()> {
         if self.batch.is_empty() {
             return Ok(());
         }
         let rows = std::mem::take(&mut self.batch);
         self.inserted += rows.len() as i64;
-        run(
-            db,
-            "LET $ds = type::record('datasets', $id);
-            INSERT INTO dataset_rows $rows.map(|$r| $r.extend({ dataset: $ds })) RETURN NONE;",
-            json!({ "id": dataset_id, "rows": rows }),
-        )
-        .await?;
+        let limit = config().import_concurrency;
+        while self.inserts.len() >= limit {
+            self.join_one().await?;
+        }
+        self.inserts.spawn(insert_batch(db.clone(), dataset_id.to_string(), rows, limit > 1));
         Ok(())
     }
+
+    /// Waits until every batch handed over so far has been inserted.
+    async fn settle(&mut self) -> ApiResult<()> {
+        while !self.inserts.is_empty() {
+            self.join_one().await?;
+        }
+        Ok(())
+    }
+
+    async fn join_one(&mut self) -> ApiResult<()> {
+        match self.inserts.join_next().await {
+            Some(Ok(result)) => result,
+            Some(Err(e)) => Err(ApiError::Internal(format!("insert task failed: {e}"))),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Inserts one batch. Batches inserted side by side can collide on shared index keys;
+/// the database then asks for the transaction to be tried again, so `retry` keeps a
+/// copy of the rows to do that with.
+async fn insert_batch(db: Database, dataset_id: String, rows: Vec<Value>, retry: bool) -> ApiResult<()> {
+    const SQL: &str = "LET $ds = type::record('datasets', $id);
+        INSERT INTO dataset_rows $rows.map(|$r| $r.extend({ dataset: $ds })) RETURN NONE;";
+    let mut rows = Value::Array(rows);
+    for attempt in 1.. {
+        let kept = retry.then(|| rows.clone());
+        match run(&db, SQL, json!({ "id": dataset_id, "rows": rows })).await {
+            Ok(_) => break,
+            Err(err) => match kept {
+                Some(copy) if attempt < MAX_INSERT_ATTEMPTS && err.to_string().contains("can be retried") => rows = copy,
+                _ => return Err(err),
+            },
+        }
+    }
+    Ok(())
 }
 
 /// Runs the import; on failure the dataset is marked `failed` with the reason.
@@ -311,6 +355,7 @@ async fn run_import(
     }
     reader_task.await.map_err(|e| ApiError::Internal(format!("reader task failed: {e}")))??;
     progress.flush(db, &dataset.id).await?;
+    progress.settle().await?;
     let imported = progress.inserted;
 
     let mut retained = 0;
@@ -404,6 +449,7 @@ async fn carry_over(
         }
         progress.flush(db, dataset_id).await?;
     }
+    progress.settle().await?;
     Ok(retained)
 }
 

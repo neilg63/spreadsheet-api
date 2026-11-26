@@ -219,6 +219,46 @@ fn strip_nulls(value: &mut Value) {
 
 /// Reads every record of `table` into `T` and back: a field the model lacks, or reads
 /// differently, fails the round trip.
+#[tokio::test]
+async fn preview_size_follows_the_rows_parameter() {
+    let app = app().await;
+    // sparse.csv: 60 rows, with `note` empty until row 41
+    let (status, body) = call(
+        &app,
+        Request::post("/datasets/upload?rows=10")
+            .header("content-type", "multipart/form-data; boundary=XBOUNDARY")
+            .body(Body::from(multipart("sparse.csv")))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let sheet = &body["datasets"][0];
+    assert_eq!(sheet["rows"].as_array().unwrap().len(), 10);
+    assert_eq!(sheet["row_count"], 60);
+    let id = sheet["dataset_id"].as_str().unwrap();
+    let note_samples = |preview: &Value| preview["columns"][2]["samples"].as_array().unwrap().len();
+
+    // the default, with nothing in `note` yet
+    let preview = get(&app, &format!("/datasets/{id}/preview")).await;
+    assert_eq!(preview["preview"]["rows"].as_array().unwrap().len(), config().preview_rows as usize);
+    assert_eq!(note_samples(&preview["preview"]), 0);
+
+    // 50 rows reach the first values of `note`
+    let (status, body) = patch(&app, &format!("/datasets/{id}/configure?dry_run=true&rows=50"), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["preview"]["rows"].as_array().unwrap().len(), 50);
+    assert_eq!(note_samples(&body["preview"]), 1);
+
+    // out-of-range requests are brought into range, not refused
+    let preview = get(&app, &format!("/datasets/{id}/preview?rows=3")).await;
+    assert_eq!(preview["preview"]["rows"].as_array().unwrap().len(), 10);
+    let preview = get(&app, &format!("/datasets/{id}/preview?rows=999999")).await;
+    assert_eq!(preview["preview"]["rows"].as_array().unwrap().len(), 60);
+
+    let options = get(&app, "/mapping/options").await;
+    assert_eq!(options["preview_rows"]["options"], json!([10, 30, 50, 100, 250, 500, 1000]));
+}
+
 async fn check_model<T: DeserializeOwned + Serialize>(db: &db::Database, table: &str) {
     let rows = db::run(db, &format!("SELECT * FROM {table};"), json!({})).await.unwrap().pop().unwrap();
     let rows = rows.as_array().unwrap();

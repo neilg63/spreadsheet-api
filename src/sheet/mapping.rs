@@ -229,8 +229,9 @@ pub struct FieldMapping {
     pub exclude: bool,
 }
 
-/// spread-cli placeholder patterns: `file_[n]` -> `files[]`, `sales_{region}` ->
-/// `sales.{region}`, `sales_[year]` -> `sales[].{year}{amount}`.
+/// Placeholder patterns: `file_[n]` -> `files[]`, `sales_{region}` -> `sales.{region}`,
+/// `sales_[year]` -> `sales[].{year}{amount}`, and by a shared ending, `{fuel}_price` ->
+/// `price.{fuel}` or `{fuel}_price_note_{n}` -> `price_{fuel}`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PatternMapping {
@@ -606,11 +607,11 @@ impl MappingDoc {
                 (None, Some(field_type)) => field_type.to_format(None),
                 (None, None) => Format::Auto,
             };
-            // expand_pattern_entry matches the natural keys case-insensitively by prefix
+            // expand_pattern_entry matches the natural keys against the shared text around the captures
             match key_pattern::expand_pattern_entry(&pattern.source, &pattern.target, &format, natural_keys) {
                 None => errors.push(mapping_error(
                     format!("patterns[{i}]"),
-                    "not a supported pattern: use prefix_[n] -> list[], prefix_{key} -> object.{key} or prefix_[n] -> list[].{n}{value}",
+                    "not a supported pattern: put [n], {name} or * where the column names differ, with shared text beside it, and refer to it in the target: file_[n] -> files[], {fuel}_price -> price.{fuel}, sales_[year] -> sales[].{year}{amount}, {fuel}_price_note_{n} -> price_{fuel}",
                 )),
                 Some(columns) if columns.is_empty() => {
                     errors.push(mapping_error(format!("patterns[{i}].source"), "matches no column in this sheet"))

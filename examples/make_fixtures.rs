@@ -45,4 +45,10 @@ fn main() {
         ("A-2", "Blue widget (dup)", 4.5, "yes", 0, 0, "blue"),
     ]);
     std::fs::write("tests/fixtures/prices.ssv", "item;price;updated\nPen;1,50;2026-01-02\nInk;12,25;2026-02-03\n").unwrap();
+    // 60 rows whose last column is empty until row 41: a default preview finds nothing in it
+    let mut sparse = String::from("id,name,note\n");
+    for i in 1..=60 {
+        sparse.push_str(&format!("{i},item {i},{}\n", if i > 40 { "late value" } else { "" }));
+    }
+    std::fs::write("tests/fixtures/sparse.csv", sparse).unwrap();
 }

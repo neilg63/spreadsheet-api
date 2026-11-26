@@ -6,7 +6,7 @@ use crate::sheet::mapping::{FieldMapping, MappingDoc};
 
 /// `mappings`: the source-column view of a schema version's mapping document, one per
 /// version. The full document (`sheet::mapping::MappingDoc`) is kept in the version's
-/// `definition["x-mapping"]`.
+/// `definition["x_mapping"]`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Mapping {
     pub id: RecordLink,

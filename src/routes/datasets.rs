@@ -93,6 +93,26 @@ fn preview_spec(preview: &SheetPreview, doc: &MappingDoc) -> (Vec<FieldSpec>, Va
     (field_spec, definition)
 }
 
+/// Preview sizes a client is offered. Any number from the smallest of these up to
+/// MAX_PREVIEW_ROWS is accepted; these are the ones worth putting in a menu.
+pub const PREVIEW_SIZES: [u32; 7] = [10, 30, 50, 100, 250, 500, 1000];
+
+#[derive(Debug, Default, Deserialize)]
+pub struct PreviewParams {
+    /// Rows to preview: 10 to MAX_PREVIEW_ROWS. Defaults to PREVIEW_ROWS.
+    pub rows: Option<u32>,
+}
+
+/// How many rows a preview reads: the number asked for, kept within the allowed range,
+/// or the configured default.
+pub fn preview_rows(requested: Option<u32>) -> u32 {
+    let max = config().max_preview_rows;
+    match requested {
+        Some(rows) => rows.clamp(PREVIEW_SIZES[0].min(max), max),
+        None => config().preview_rows.clamp(1, max),
+    }
+}
+
 struct SavedFile {
     id: String,
     storage_key: String,
@@ -268,7 +288,9 @@ async fn copy_shared(state: &AppState, requested: &str, filename: Option<&str>, 
 /// POST /datasets/upload. Multipart: `file`, plus optional `source` (JSON source options
 /// applied to every worksheet, e.g. `{"decimal_comma": true}`). In service mode, also a
 /// JSON body `{"url": ...}` or `{"path": ...}` with optional `filename` and `source`.
-pub async fn upload(State(state): State<AppState>, caller: Caller, request: Request) -> ApiResult<Json<Value>> {
+/// `?rows=` sets how many rows of each worksheet the response previews.
+pub async fn upload(State(state): State<AppState>, caller: Caller, Query(params): Query<PreviewParams>, request: Request) -> ApiResult<Json<Value>> {
+    let rows = preview_rows(params.rows);
     let allowance = store::touch_principal(&state.db, &caller.me).await?;
     let max_bytes = state.max_upload_bytes(&caller);
     let is_json = request
@@ -295,7 +317,7 @@ pub async fn upload(State(state): State<AppState>, caller: Caller, request: Requ
             .map_err(|e| ApiError::BadRequest(format!("send multipart/form-data with a 'file' field: {e}")))?;
         read_multipart(&mut multipart, max_bytes).await?
     };
-    match process_upload(&state, &caller, &file, &source).await {
+    match process_upload(&state, &caller, &file, &source, rows).await {
         Ok(mut body) => {
             body["allowance"] = json!(allowance);
             Ok(Json(body))
@@ -347,7 +369,7 @@ async fn read_multipart(multipart: &mut Multipart, max_bytes: usize) -> ApiResul
     }
 }
 
-async fn process_upload(state: &AppState, caller: &Caller, file: &SavedFile, source: &SourceOptions) -> ApiResult<Value> {
+async fn process_upload(state: &AppState, caller: &Caller, file: &SavedFile, source: &SourceOptions, rows: u32) -> ApiResult<Value> {
     let me = &caller.me;
     let path = config().upload_dir.join(&file.storage_key);
     let sheets = reader::list_sheets(&path).await?;
@@ -374,7 +396,7 @@ async fn process_upload(state: &AppState, caller: &Caller, file: &SavedFile, sou
             Some(sheet) => format!("{stem} / {sheet}"),
             None => stem.clone(),
         };
-        match add_sheet(state, caller, file, &path, index, sheet, &name, source).await {
+        match add_sheet(state, caller, file, &path, index, sheet, &name, source, rows).await {
             Ok(Some(overview)) => datasets.push(overview),
             Ok(None) => skipped.push(json!({ "sheet": sheet, "sheet_index": index, "reason": "the worksheet is empty" })),
             Err(err) => skipped.push(json!({ "sheet": sheet, "sheet_index": index, "reason": err.to_string() })),
@@ -401,6 +423,7 @@ async fn add_sheet(
     sheet: Option<&str>,
     name: &str,
     source: &SourceOptions,
+    rows: u32,
 ) -> ApiResult<Option<Value>> {
     let (db, me) = (&state.db, &caller.me);
     let existing = store::find_collection(db, me, name).await?;
@@ -412,7 +435,7 @@ async fn add_sheet(
         Some(version) => version.doc(),
         None => MappingDoc { source: source.clone(), ..Default::default() },
     };
-    let preview = reader::preview(path, index, &doc, config().preview_rows).await?.map_err(ApiError::InvalidMapping)?;
+    let preview = reader::preview(path, index, &doc, rows).await?.map_err(ApiError::InvalidMapping)?;
     if preview.natural_keys.is_empty() || preview.row_count == 0 {
         return Ok(None);
     }
@@ -567,12 +590,18 @@ pub async fn export(State(state): State<AppState>, Path(id): Path<String>, Query
 }
 
 /// GET /datasets/{id}/preview: re-reads the source file with the saved mapping.
-pub async fn preview(State(state): State<AppState>, caller: Caller, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+/// `?rows=` sets how many rows come back.
+pub async fn preview(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(id): Path<String>,
+    Query(params): Query<PreviewParams>,
+) -> ApiResult<Json<Value>> {
     let me = caller.me;
     let dataset = store::get_own_dataset(&state.db, &me, &id).await?;
     let path = dataset.require_source()?;
     let doc = dataset.doc();
-    let preview = reader::preview(&path, dataset.sheet_index(), &doc, config().preview_rows)
+    let preview = reader::preview(&path, dataset.sheet_index(), &doc, preview_rows(params.rows))
         .await?
         .map_err(ApiError::InvalidMapping)?;
     let (field_spec, _) = preview_spec(&preview, &doc);
@@ -584,6 +613,8 @@ pub async fn preview(State(state): State<AppState>, caller: Caller, Path(id): Pa
 pub struct ConfigureParams {
     /// Validate and preview without saving.
     pub dry_run: Option<bool>,
+    /// Rows in the preview that comes back: 10 to MAX_PREVIEW_ROWS. Defaults to PREVIEW_ROWS.
+    pub rows: Option<u32>,
 }
 
 /// PATCH /datasets/{id}/configure: replaces the dataset's mapping document, validates it
@@ -618,7 +649,7 @@ pub async fn configure(
         return Err(ApiError::Forbidden("primary keys need a plan with the 'links' feature".into()));
     }
     let path = dataset.require_source()?;
-    let preview = reader::preview(&path, dataset.sheet_index(), &doc, config().preview_rows)
+    let preview = reader::preview(&path, dataset.sheet_index(), &doc, preview_rows(params.rows))
         .await?
         .map_err(ApiError::InvalidMapping)?;
     if !preview.errors.is_empty() {

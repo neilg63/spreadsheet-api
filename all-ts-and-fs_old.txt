@@ -1,0 +1,960 @@
+TABLE_NAME	ORDINAL_POSITION	COLUMN_NAME	COLUMN_TYPE	IS_NULLABLE	COLUMN_DEFAULT	EXTRA	CHARACTER_SET_NAME	COLLATION_NAME
+mlwp_actionscheduler_actions	1	action_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_actionscheduler_actions	2	hook	varchar(191)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_actionscheduler_actions	3	status	varchar(20)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_actionscheduler_actions	4	scheduled_date_gmt	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_actionscheduler_actions	5	scheduled_date_local	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_actionscheduler_actions	6	args	varchar(191)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_actionscheduler_actions	7	schedule	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_actionscheduler_actions	8	group_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_actionscheduler_actions	9	attempts	int(11)	NO	0		NULL	NULL
+mlwp_actionscheduler_actions	10	last_attempt_gmt	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_actionscheduler_actions	11	last_attempt_local	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_actionscheduler_actions	12	claim_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_actionscheduler_actions	13	extended_args	varchar(8000)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_actionscheduler_actions	14	priority	tinyint(3) unsigned	NO	10		NULL	NULL
+mlwp_actionscheduler_claims	1	claim_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_actionscheduler_claims	2	date_created_gmt	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_actionscheduler_groups	1	group_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_actionscheduler_groups	2	slug	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_actionscheduler_logs	1	log_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_actionscheduler_logs	2	action_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_actionscheduler_logs	3	message	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_actionscheduler_logs	4	log_date_gmt	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_actionscheduler_logs	5	log_date_local	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_aioseo_ai_insights_keyword_reports	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_ai_insights_keyword_reports	2	uuid	varchar(40)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_ai_insights_keyword_reports	3	keyword	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_ai_insights_keyword_reports	4	status	varchar(20)	NO	pending		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_ai_insights_keyword_reports	5	brands	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_ai_insights_keyword_reports	6	brands_mentioned	int(11)	YES	0		NULL	NULL
+mlwp_aioseo_ai_insights_keyword_reports	7	results	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_ai_insights_keyword_reports	8	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_ai_insights_keyword_reports	9	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_cache	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_cache	2	key	varchar(80)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_cache	3	value	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_cache	4	is_object	tinyint(1)	YES	0		NULL	NULL
+mlwp_aioseo_cache	5	expiration	datetime	YES	NULL		NULL	NULL
+mlwp_aioseo_cache	6	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_cache	7	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_cache	8	name	varchar(80)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_blocked_args	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_crawl_cleanup_blocked_args	2	param	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_blocked_args	3	key	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_blocked_args	4	value	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_blocked_args	5	key_value_hash	varchar(40)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_blocked_args	6	regex	varchar(150)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_blocked_args	7	hits	int(20)	NO	0		NULL	NULL
+mlwp_aioseo_crawl_cleanup_blocked_args	8	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_crawl_cleanup_blocked_args	9	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_crawl_cleanup_blocked_args	10	param_value_hash	varchar(40)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_logs	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_crawl_cleanup_logs	2	slug	text	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_logs	3	param	text	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_logs	4	key	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_logs	5	value	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_logs	6	hash	varchar(40)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_crawl_cleanup_logs	7	hits	int(20)	NO	1		NULL	NULL
+mlwp_aioseo_crawl_cleanup_logs	8	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_crawl_cleanup_logs	9	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_notifications	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_notifications	2	slug	varchar(13)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	3	addon	varchar(64)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	4	title	text	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	5	content	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	6	type	varchar(64)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	7	level	text	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	8	notification_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_aioseo_notifications	9	notification_name	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	10	start	datetime	YES	NULL		NULL	NULL
+mlwp_aioseo_notifications	11	end	datetime	YES	NULL		NULL	NULL
+mlwp_aioseo_notifications	12	button1_label	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	13	button1_action	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	14	button2_label	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	15	button2_action	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_notifications	16	dismissed	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_notifications	17	new	tinyint(1)	NO	1		NULL	NULL
+mlwp_aioseo_notifications	18	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_notifications	19	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_posts	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_posts	2	post_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_aioseo_posts	3	title	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	4	description	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	5	keywords	mediumtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	6	keyphrases	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	7	page_analysis	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	8	primary_term	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	9	canonical_url	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	10	og_title	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	11	og_description	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	12	og_object_type	varchar(64)	YES	default		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	13	og_image_type	varchar(64)	YES	default		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	14	og_image_url	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	15	og_image_width	int(11)	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	16	og_image_height	int(11)	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	17	og_image_custom_url	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	18	og_image_custom_fields	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	19	og_video	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	20	og_custom_url	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	21	og_article_section	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	22	og_article_tags	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	23	twitter_use_og	tinyint(1)	YES	0		NULL	NULL
+mlwp_aioseo_posts	24	twitter_card	varchar(64)	YES	default		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	25	twitter_image_type	varchar(64)	YES	default		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	26	twitter_image_url	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	27	twitter_image_custom_url	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	28	twitter_image_custom_fields	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	29	twitter_title	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	30	twitter_description	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	31	seo_score	int(11)	NO	0		NULL	NULL
+mlwp_aioseo_posts	32	schema	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	33	schema_type	varchar(20)	YES	default		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	34	schema_type_options	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	35	pillar_content	tinyint(1)	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	36	robots_default	tinyint(1)	NO	1		NULL	NULL
+mlwp_aioseo_posts	37	robots_noindex	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	38	robots_noarchive	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	39	robots_nosnippet	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	40	robots_nofollow	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	41	robots_noimageindex	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	42	robots_noodp	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	43	robots_notranslate	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	44	robots_max_snippet	int(11)	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	45	robots_max_videopreview	int(11)	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	46	robots_max_imagepreview	varchar(20)	YES	large		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	47	images	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	48	image_scan_date	datetime	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	49	priority	float	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	50	frequency	tinytext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	51	videos	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	52	video_thumbnail	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	53	video_scan_date	datetime	YES	NULL		NULL	NULL
+mlwp_aioseo_posts	54	local_seo	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	55	limit_modified_date	tinyint(1)	NO	0		NULL	NULL
+mlwp_aioseo_posts	56	options	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	57	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_posts	58	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_posts	59	focus_keyword	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	60	truseo	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	61	additional_keywords	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	62	truseo_locale	varchar(20)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	63	ai	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	64	breadcrumb_settings	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_posts	65	seo_analyzer_scan_date	datetime	YES	NULL		NULL	NULL
+mlwp_aioseo_seo_analyzer_results	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_seo_analyzer_results	2	data	text	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_seo_analyzer_results	3	score	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_seo_analyzer_results	4	competitor_url	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_seo_analyzer_results	5	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_seo_analyzer_results	6	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_writing_assistant_keywords	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_writing_assistant_keywords	2	uuid	varchar(40)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_keywords	3	keyword	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_keywords	4	country	varchar(10)	NO	us		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_keywords	5	language	varchar(10)	NO	en		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_keywords	6	progress	tinyint(3)	YES	0		NULL	NULL
+mlwp_aioseo_writing_assistant_keywords	7	keywords	mediumtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_keywords	8	competitors	mediumtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_keywords	9	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_writing_assistant_keywords	10	updated	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_writing_assistant_posts	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_aioseo_writing_assistant_posts	2	post_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_aioseo_writing_assistant_posts	3	keyword_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_aioseo_writing_assistant_posts	4	content_analysis_hash	varchar(40)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_posts	5	content_analysis	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_aioseo_writing_assistant_posts	6	created	datetime	NO	NULL		NULL	NULL
+mlwp_aioseo_writing_assistant_posts	7	updated	datetime	NO	NULL		NULL	NULL
+mlwp_check_email_log	1	id	mediumint(9)	NO	NULL	auto_increment	NULL	NULL
+mlwp_check_email_log	2	to_email	varchar(500)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	3	subject	varchar(500)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	4	message	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	5	open_count	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	6	backtrace_segment	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	7	headers	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	8	attachments	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	9	sent_date	timestamp	NO	CURRENT_TIMESTAMP	on update CURRENT_TIMESTAMP	NULL	NULL
+mlwp_check_email_log	10	attachment_name	varchar(1000)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	11	ip_address	varchar(15)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	12	result	tinyint(1)	YES	NULL		NULL	NULL
+mlwp_check_email_log	13	error_message	varchar(1000)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_log	14	open_tracking_id	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_check_email_spam_analyzer	1	id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_check_email_spam_analyzer	2	html_content	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_check_email_spam_analyzer	3	spam_assassin	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_check_email_spam_analyzer	4	authenticated	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_check_email_spam_analyzer	5	block_listed	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_check_email_spam_analyzer	6	broken_links	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_check_email_spam_analyzer	7	final_score	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_check_email_spam_analyzer	8	test_date	timestamp	NO	CURRENT_TIMESTAMP	on update CURRENT_TIMESTAMP	NULL	NULL
+mlwp_check_email_spam_analyzer	9	created_at	datetime	NO	CURRENT_TIMESTAMP		NULL	NULL
+mlwp_commentmeta	1	meta_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_commentmeta	2	comment_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_commentmeta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_commentmeta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	1	comment_ID	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_comments	2	comment_post_ID	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_comments	3	comment_author	tinytext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	4	comment_author_email	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	5	comment_author_url	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	6	comment_author_IP	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	7	comment_date	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_comments	8	comment_date_gmt	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_comments	9	comment_content	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	10	comment_karma	int(11)	NO	0		NULL	NULL
+mlwp_comments	11	comment_approved	varchar(20)	NO	1		utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	12	comment_agent	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	13	comment_type	varchar(20)	NO	comment		utf8mb4	utf8mb4_unicode_ci
+mlwp_comments	14	comment_parent	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_comments	15	user_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_easywpsmtp_debug_events	1	id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_easywpsmtp_debug_events	2	content	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_easywpsmtp_debug_events	3	initiator	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_easywpsmtp_debug_events	4	event_type	tinyint(3) unsigned	NO	0		NULL	NULL
+mlwp_easywpsmtp_debug_events	5	created_at	timestamp	NO	CURRENT_TIMESTAMP		NULL	NULL
+mlwp_easywpsmtp_tasks_meta	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_easywpsmtp_tasks_meta	2	action	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_easywpsmtp_tasks_meta	3	data	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_easywpsmtp_tasks_meta	4	date	datetime	NO	NULL		NULL	NULL
+mlwp_email_user	1	id	int(11)	NO	NULL	auto_increment	NULL	NULL
+mlwp_email_user	2	template_key	varchar(20)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_email_user	3	template_value	longtext	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_email_user	4	status	varchar(20)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_email_user	5	temp_subject	varchar(500)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_gf_addon_feed	1	id	mediumint(8) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_addon_feed	2	form_id	mediumint(8) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_addon_feed	3	is_active	tinyint(1)	NO	1		NULL	NULL
+mlwp_gf_addon_feed	4	feed_order	mediumint(8) unsigned	NO	0		NULL	NULL
+mlwp_gf_addon_feed	5	meta	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_addon_feed	6	addon_slug	varchar(50)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_addon_feed	7	event_type	varchar(20)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_draft_submissions	1	uuid	char(32)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_draft_submissions	2	email	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_draft_submissions	3	form_id	mediumint(10) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_draft_submissions	4	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_gf_draft_submissions	5	ip	varchar(45)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_draft_submissions	6	source_url	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_draft_submissions	7	submission	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	1	id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_entry	2	form_id	mediumint(10) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_entry	3	post_id	bigint(10) unsigned	YES	NULL		NULL	NULL
+mlwp_gf_entry	4	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_gf_entry	5	date_updated	datetime	YES	NULL		NULL	NULL
+mlwp_gf_entry	6	is_starred	tinyint(10)	NO	0		NULL	NULL
+mlwp_gf_entry	7	is_read	tinyint(10)	NO	0		NULL	NULL
+mlwp_gf_entry	8	ip	varchar(45)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	9	source_url	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	10	user_agent	varchar(250)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	11	currency	varchar(5)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	12	payment_status	varchar(15)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	13	payment_date	datetime	YES	NULL		NULL	NULL
+mlwp_gf_entry	14	payment_amount	decimal(19,2)	YES	NULL		NULL	NULL
+mlwp_gf_entry	15	payment_method	varchar(30)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	16	transaction_id	varchar(50)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	17	is_fulfilled	tinyint(10)	YES	NULL		NULL	NULL
+mlwp_gf_entry	18	created_by	bigint(10) unsigned	YES	NULL		NULL	NULL
+mlwp_gf_entry	19	transaction_type	tinyint(10)	YES	NULL		NULL	NULL
+mlwp_gf_entry	20	status	varchar(20)	NO	active		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry	21	source_id	bigint(10) unsigned	YES	NULL		NULL	NULL
+mlwp_gf_entry_meta	1	id	bigint(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_entry_meta	2	form_id	mediumint(10) unsigned	NO	0		NULL	NULL
+mlwp_gf_entry_meta	3	entry_id	bigint(10) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_entry_meta	4	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry_meta	5	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry_meta	6	item_index	varchar(60)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry_notes	1	id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_entry_notes	2	entry_id	int(10) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_entry_notes	3	user_name	varchar(250)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry_notes	4	user_id	bigint(10)	YES	NULL		NULL	NULL
+mlwp_gf_entry_notes	5	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_gf_entry_notes	6	value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry_notes	7	note_type	varchar(50)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_entry_notes	8	sub_type	varchar(50)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form	1	id	mediumint(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_form	2	title	varchar(150)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form	3	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_gf_form	4	date_updated	datetime	YES	NULL		NULL	NULL
+mlwp_gf_form	5	is_active	tinyint(10)	NO	1		NULL	NULL
+mlwp_gf_form	6	is_trash	tinyint(10)	NO	0		NULL	NULL
+mlwp_gf_form_meta	1	form_id	mediumint(10) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_form_meta	2	display_meta	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form_meta	3	entries_grid_meta	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form_meta	4	confirmations	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form_meta	5	notifications	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form_revisions	1	id	bigint(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_form_revisions	2	form_id	mediumint(10) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_form_revisions	3	display_meta	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form_revisions	4	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_gf_form_view	1	id	bigint(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_form_view	2	form_id	mediumint(10) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_form_view	3	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_gf_form_view	4	ip	char(15)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_form_view	5	count	mediumint(10) unsigned	NO	1		NULL	NULL
+mlwp_gf_rest_api_keys	1	key_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_gf_rest_api_keys	2	user_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_gf_rest_api_keys	3	description	varchar(200)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_rest_api_keys	4	permissions	varchar(10)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_rest_api_keys	5	consumer_key	char(64)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_rest_api_keys	6	consumer_secret	char(43)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_rest_api_keys	7	nonces	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_rest_api_keys	8	truncated_key	char(7)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_gf_rest_api_keys	9	last_access	datetime	YES	NULL		NULL	NULL
+mlwp_links	1	link_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_links	2	link_url	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_links	3	link_name	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_links	4	link_image	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_links	5	link_target	varchar(25)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_links	6	link_description	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_links	7	link_visible	varchar(20)	NO	Y		utf8mb4	utf8mb4_unicode_ci
+mlwp_links	8	link_owner	bigint(20) unsigned	NO	1		NULL	NULL
+mlwp_links	9	link_rating	int(11)	NO	0		NULL	NULL
+mlwp_links	10	link_updated	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_links	11	link_rel	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_links	12	link_notes	mediumtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_links	13	link_rss	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_lockdowns	1	lockdown_ID	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_lockdowns	2	user_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_lockdowns	3	lockdown_date	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_lockdowns	4	release_date	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_lockdowns	5	lockdown_IP	varchar(100)	NO			latin1	latin1_swedish_ci
+mlwp_lockdowns	6	reason	varchar(200)	YES	NULL		latin1	latin1_swedish_ci
+mlwp_lockdowns	7	unlocked	smallint(20)	NO	0		NULL	NULL
+mlwp_login_fails	1	login_attempt_ID	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_login_fails	2	user_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_login_fails	3	login_attempt_date	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_login_fails	4	login_attempt_IP	varchar(100)	NO			latin1	latin1_swedish_ci
+mlwp_login_fails	5	failed_user	varchar(200)	NO			latin1	latin1_swedish_ci
+mlwp_login_fails	6	reason	varchar(200)	YES	NULL		latin1	latin1_swedish_ci
+mlwp_oh_shorturl	1	shorturl_id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_oh_shorturl	2	post_id	int(10) unsigned	YES	NULL		NULL	NULL
+mlwp_oh_shorturl	3	shorturl	varchar(255)	NO	NULL		latin1	latin1_swedish_ci
+mlwp_oh_shorturl	4	destination_url	varchar(255)	YES	NULL		latin1	latin1_swedish_ci
+mlwp_oh_shorturl	5	redirect_code	smallint(5) unsigned	NO	301		NULL	NULL
+mlwp_options	1	option_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_options	2	option_name	varchar(191)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_options	3	option_value	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_options	4	autoload	varchar(20)	NO	yes		utf8mb4	utf8mb4_unicode_ci
+mlwp_p2p	1	p2p_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_p2p	2	p2p_from	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_p2p	3	p2p_to	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_p2p	4	p2p_type	varchar(44)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_p2pmeta	1	meta_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_p2pmeta	2	p2p_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_p2pmeta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_p2pmeta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_postmeta	1	meta_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_postmeta	2	post_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_postmeta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_postmeta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	1	ID	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_posts	2	post_author	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_posts	3	post_date	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_posts	4	post_date_gmt	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_posts	5	post_content	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	6	post_title	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	7	post_excerpt	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	8	post_status	varchar(20)	NO	publish		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	9	comment_status	varchar(20)	NO	open		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	10	ping_status	varchar(20)	NO	open		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	11	post_password	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	12	post_name	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	13	to_ping	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	14	pinged	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	15	post_modified	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_posts	16	post_modified_gmt	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_posts	17	post_content_filtered	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	18	post_parent	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_posts	19	guid	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	20	menu_order	int(11)	NO	0		NULL	NULL
+mlwp_posts	21	post_type	varchar(20)	NO	post		utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	22	post_mime_type	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_posts	23	comment_count	bigint(20)	NO	0		NULL	NULL
+mlwp_rg_form	1	id	mediumint(8) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_rg_form	2	title	varchar(150)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_form	3	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_rg_form	4	is_active	tinyint(1)	NO	1		NULL	NULL
+mlwp_rg_form	5	is_trash	tinyint(1)	NO	0		NULL	NULL
+mlwp_rg_form_meta	1	form_id	mediumint(8) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_form_meta	2	display_meta	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_form_meta	3	entries_grid_meta	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_form_meta	4	confirmations	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_form_meta	5	notifications	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_form_view	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_rg_form_view	2	form_id	mediumint(8) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_form_view	3	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_rg_form_view	4	ip	char(15)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_form_view	5	count	mediumint(8) unsigned	NO	1		NULL	NULL
+mlwp_rg_incomplete_submissions	1	uuid	char(32)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_incomplete_submissions	2	email	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_incomplete_submissions	3	form_id	mediumint(8) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_incomplete_submissions	4	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_rg_incomplete_submissions	5	ip	varchar(39)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_incomplete_submissions	6	source_url	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_incomplete_submissions	7	submission	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	1	id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_rg_lead	2	form_id	mediumint(8) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_lead	3	post_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_rg_lead	4	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_rg_lead	5	is_starred	tinyint(1)	NO	0		NULL	NULL
+mlwp_rg_lead	6	is_read	tinyint(1)	NO	0		NULL	NULL
+mlwp_rg_lead	7	ip	varchar(39)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	8	source_url	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	9	user_agent	varchar(250)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	10	currency	varchar(5)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	11	payment_status	varchar(15)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	12	payment_date	datetime	YES	NULL		NULL	NULL
+mlwp_rg_lead	13	payment_amount	decimal(19,2)	YES	NULL		NULL	NULL
+mlwp_rg_lead	14	payment_method	varchar(30)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	15	transaction_id	varchar(50)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead	16	is_fulfilled	tinyint(1)	YES	NULL		NULL	NULL
+mlwp_rg_lead	17	created_by	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_rg_lead	18	transaction_type	tinyint(1)	YES	NULL		NULL	NULL
+mlwp_rg_lead	19	status	varchar(20)	NO	active		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead_detail	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_rg_lead_detail	2	lead_id	int(10) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_lead_detail	3	form_id	mediumint(8) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_lead_detail	4	field_number	float	NO	NULL		NULL	NULL
+mlwp_rg_lead_detail	5	value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead_detail_long	1	lead_detail_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_lead_detail_long	2	value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead_meta	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_rg_lead_meta	2	form_id	mediumint(8) unsigned	NO	0		NULL	NULL
+mlwp_rg_lead_meta	3	lead_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_lead_meta	4	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead_meta	5	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead_notes	1	id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_rg_lead_notes	2	lead_id	int(10) unsigned	NO	NULL		NULL	NULL
+mlwp_rg_lead_notes	3	user_name	varchar(250)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead_notes	4	user_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_rg_lead_notes	5	date_created	datetime	NO	NULL		NULL	NULL
+mlwp_rg_lead_notes	6	value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_rg_lead_notes	7	note_type	varchar(50)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_search_filter_cache	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_search_filter_cache	2	post_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_search_filter_cache	3	post_parent_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_search_filter_cache	4	field_name	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_search_filter_cache	5	field_value	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_search_filter_cache	6	field_value_num	bigint(20)	YES	NULL		NULL	NULL
+mlwp_search_filter_cache	7	field_parent_num	bigint(20)	YES	NULL		NULL	NULL
+mlwp_search_filter_cache	8	term_parent_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_search_filter_term_results	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_search_filter_term_results	2	field_name	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_search_filter_term_results	3	field_value	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_search_filter_term_results	4	field_value_num	bigint(20)	YES	NULL		NULL	NULL
+mlwp_search_filter_term_results	5	result_ids	mediumtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_signups	1	signup_id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_signups	2	domain	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_signups	3	path	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_signups	4	title	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_signups	5	user_login	varchar(60)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_signups	6	user_email	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_signups	7	registered	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_signups	8	activated	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_signups	9	active	tinyint(1)	NO	0		NULL	NULL
+mlwp_signups	10	activation_key	varchar(50)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_signups	11	meta	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_simple_login_log	1	id	int(11)	NO	NULL	auto_increment	NULL	NULL
+mlwp_simple_login_log	2	uid	int(11)	NO	NULL		NULL	NULL
+mlwp_simple_login_log	3	user_login	varchar(60)	NO	NULL		latin1	latin1_swedish_ci
+mlwp_simple_login_log	4	user_role	varchar(255)	NO	NULL		latin1	latin1_swedish_ci
+mlwp_simple_login_log	5	time	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_simple_login_log	6	ip	varchar(100)	NO	NULL		latin1	latin1_swedish_ci
+mlwp_simple_login_log	7	login_result	varchar(1)	YES	NULL		latin1	latin1_swedish_ci
+mlwp_simple_login_log	8	data	longtext	NO	NULL		latin1	latin1_swedish_ci
+mlwp_termmeta	1	meta_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_termmeta	2	term_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_termmeta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_termmeta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_terms	1	term_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_terms	2	name	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_terms	3	slug	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_terms	4	term_group	bigint(10)	NO	0		NULL	NULL
+mlwp_term_relationships	1	object_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_term_relationships	2	term_taxonomy_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_term_relationships	3	term_order	int(11)	NO	0		NULL	NULL
+mlwp_term_taxonomy	1	term_taxonomy_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_term_taxonomy	2	term_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_term_taxonomy	3	taxonomy	varchar(32)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_term_taxonomy	4	description	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_term_taxonomy	5	parent	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_term_taxonomy	6	count	bigint(20)	NO	0		NULL	NULL
+mlwp_userfeedback_heatmaps	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_userfeedback_heatmaps	2	page_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_userfeedback_heatmaps	3	created_at	timestamp	NO	CURRENT_TIMESTAMP		NULL	NULL
+mlwp_userfeedback_heatmaps	4	status	enum('publish','draft','trash')	YES	publish		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_heatmap_recordings	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_userfeedback_heatmap_recordings	2	heatmap_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_userfeedback_heatmap_recordings	3	heatmap_data	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_heatmap_recordings	4	created_at	timestamp	NO	CURRENT_TIMESTAMP		NULL	NULL
+mlwp_userfeedback_heatmap_recordings	5	interaction_type	varchar(100)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_post_ratings	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_userfeedback_post_ratings	2	post_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_userfeedback_post_ratings	3	rating	tinyint(3) unsigned	NO	NULL		NULL	NULL
+mlwp_userfeedback_post_ratings	4	user_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_userfeedback_post_ratings	5	created_at	datetime	NO	NULL		NULL	NULL
+mlwp_userfeedback_surveys	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_userfeedback_surveys	2	title	varchar(128)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_surveys	3	status	enum('publish','draft','trash')	YES	draft		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_surveys	4	questions	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_surveys	5	impressions	bigint(20)	NO	0		NULL	NULL
+mlwp_userfeedback_surveys	6	settings	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_surveys	7	notifications	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_surveys	8	publish_at	timestamp	YES	NULL		NULL	NULL
+mlwp_userfeedback_surveys	9	created_at	timestamp	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_userfeedback_surveys	10	type	varchar(100)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_survey_responses	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_userfeedback_survey_responses	2	survey_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_userfeedback_survey_responses	3	answers	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_survey_responses	4	page_submitted	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_survey_responses	5	user_ip	varchar(256)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_survey_responses	6	user_browser	varchar(128)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_survey_responses	7	user_os	varchar(128)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_survey_responses	8	user_device	varchar(64)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_userfeedback_survey_responses	9	submitted_at	timestamp	NO	CURRENT_TIMESTAMP	on update CURRENT_TIMESTAMP	NULL	NULL
+mlwp_usermeta	1	umeta_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_usermeta	2	user_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_usermeta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_usermeta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_users	1	ID	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_users	2	user_login	varchar(60)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_users	3	user_pass	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_users	4	user_nicename	varchar(50)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_users	5	user_email	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_users	6	user_url	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_users	7	user_registered	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_users	8	user_activation_key	varchar(255)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_users	9	user_status	int(11)	NO	0		NULL	NULL
+mlwp_users	10	display_name	varchar(250)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wcs_health_check_candidates	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wcs_health_check_candidates	2	run_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wcs_health_check_candidates	3	subscription_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wcs_health_check_candidates	4	signal_type	varchar(32)	NO	supports_auto_renewal		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_candidates	5	signal_summary	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_candidates	6	status	varchar(20)	NO	pending		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_candidates	7	fixed_at	datetime	YES	NULL		NULL	NULL
+mlwp_wcs_health_check_candidates	8	errored_at	datetime	YES	NULL		NULL	NULL
+mlwp_wcs_health_check_candidates	9	error_message	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_candidates	10	snapshot_key	varchar(64)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_candidates	11	created_at	datetime	NO	CURRENT_TIMESTAMP		NULL	NULL
+mlwp_wcs_health_check_runs	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wcs_health_check_runs	2	type	varchar(10)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_runs	3	started_at	datetime	NO	NULL		NULL	NULL
+mlwp_wcs_health_check_runs	4	completed_at	datetime	YES	NULL		NULL	NULL
+mlwp_wcs_health_check_runs	5	status	varchar(20)	NO	running		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_runs	6	triggered_by	varchar(32)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_runs	7	stats_json	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wcs_health_check_runs	8	error_message	text	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wc_admin_notes	1	note_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_admin_notes	2	name	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	3	type	varchar(20)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	4	locale	varchar(20)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	5	title	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	6	content	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	7	icon	varchar(200)	NO	info		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	8	content_data	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	9	status	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	10	source	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	11	date_created	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_admin_notes	12	date_reminder	datetime	YES	NULL		NULL	NULL
+mlwp_wc_admin_notes	13	is_snoozable	tinyint(1)	NO	0		NULL	NULL
+mlwp_wc_admin_notes	14	layout	varchar(20)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	15	image	varchar(200)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_notes	16	is_deleted	tinyint(1)	NO	0		NULL	NULL
+mlwp_wc_admin_notes	17	is_read	tinyint(1)	NO	0		NULL	NULL
+mlwp_wc_admin_note_actions	1	action_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_admin_note_actions	2	note_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_admin_note_actions	3	name	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_note_actions	4	label	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_note_actions	5	query	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_note_actions	6	status	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_note_actions	7	actioned_text	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_note_actions	8	nonce_action	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_admin_note_actions	9	nonce_name	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_category_lookup	1	category_tree_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_category_lookup	2	category_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_customer_lookup	1	customer_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_customer_lookup	2	user_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_wc_customer_lookup	3	username	varchar(60)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_customer_lookup	4	first_name	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_customer_lookup	5	last_name	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_customer_lookup	6	email	varchar(100)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_customer_lookup	7	date_last_active	timestamp	YES	NULL		NULL	NULL
+mlwp_wc_customer_lookup	8	date_registered	timestamp	YES	NULL		NULL	NULL
+mlwp_wc_customer_lookup	9	country	char(2)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_customer_lookup	10	postcode	varchar(20)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_customer_lookup	11	city	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_customer_lookup	12	state	varchar(100)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_download_log	1	download_log_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_download_log	2	timestamp	datetime	NO	NULL		NULL	NULL
+mlwp_wc_download_log	3	permission_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_download_log	4	user_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_wc_download_log	5	user_ip_address	varchar(100)	YES			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_email_unsubscribes	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_email_unsubscribes	2	email_hash	char(64)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wc_email_unsubscribes	3	email_kind	varchar(64)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wc_email_unsubscribes	4	action	varchar(20)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wc_email_unsubscribes	5	created_at	datetime	NO	NULL		NULL	NULL
+mlwp_wc_order_coupon_lookup	1	order_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_coupon_lookup	2	coupon_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wc_order_coupon_lookup	3	date_created	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_order_coupon_lookup	4	discount_amount	double	NO	0		NULL	NULL
+mlwp_wc_order_product_lookup	1	order_item_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_product_lookup	2	order_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_product_lookup	3	product_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_product_lookup	4	variation_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_product_lookup	5	customer_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_wc_order_product_lookup	6	date_created	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_order_product_lookup	7	product_qty	int(11)	NO	NULL		NULL	NULL
+mlwp_wc_order_product_lookup	8	product_net_revenue	double	NO	0		NULL	NULL
+mlwp_wc_order_product_lookup	9	product_gross_revenue	double	NO	0		NULL	NULL
+mlwp_wc_order_product_lookup	10	coupon_amount	double	NO	0		NULL	NULL
+mlwp_wc_order_product_lookup	11	tax_amount	double	NO	0		NULL	NULL
+mlwp_wc_order_product_lookup	12	shipping_amount	double	NO	0		NULL	NULL
+mlwp_wc_order_product_lookup	13	shipping_tax_amount	double	NO	0		NULL	NULL
+mlwp_wc_order_stats	1	order_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_stats	2	parent_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_wc_order_stats	3	date_created	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_order_stats	4	date_created_gmt	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_order_stats	5	num_items_sold	int(11)	NO	0		NULL	NULL
+mlwp_wc_order_stats	6	total_sales	double	NO	0		NULL	NULL
+mlwp_wc_order_stats	7	tax_total	double	NO	0		NULL	NULL
+mlwp_wc_order_stats	8	shipping_total	double	NO	0		NULL	NULL
+mlwp_wc_order_stats	9	net_total	double	NO	0		NULL	NULL
+mlwp_wc_order_stats	10	returning_customer	tinyint(1)	YES	NULL		NULL	NULL
+mlwp_wc_order_stats	11	status	varchar(20)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_order_stats	12	customer_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_stats	13	date_paid	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_order_stats	14	date_completed	datetime	YES	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_order_tax_lookup	1	order_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_tax_lookup	2	tax_rate_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_order_tax_lookup	3	date_created	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_order_tax_lookup	4	shipping_tax	double	NO	0		NULL	NULL
+mlwp_wc_order_tax_lookup	5	order_tax	double	NO	0		NULL	NULL
+mlwp_wc_order_tax_lookup	6	total_tax	double	NO	0		NULL	NULL
+mlwp_wc_product_attributes_lookup	1	product_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wc_product_attributes_lookup	2	product_or_parent_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wc_product_attributes_lookup	3	taxonomy	varchar(32)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wc_product_attributes_lookup	4	term_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wc_product_attributes_lookup	5	is_variation_attribute	tinyint(1)	NO	NULL		NULL	NULL
+mlwp_wc_product_attributes_lookup	6	in_stock	tinyint(1)	NO	NULL		NULL	NULL
+mlwp_wc_product_download_directories	1	url_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_product_download_directories	2	url	varchar(256)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wc_product_download_directories	3	enabled	tinyint(1)	NO	0		NULL	NULL
+mlwp_wc_product_meta_lookup	1	product_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wc_product_meta_lookup	2	sku	varchar(100)	YES			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_product_meta_lookup	3	virtual	tinyint(1)	YES	0		NULL	NULL
+mlwp_wc_product_meta_lookup	4	downloadable	tinyint(1)	YES	0		NULL	NULL
+mlwp_wc_product_meta_lookup	5	min_price	decimal(19,4)	YES	NULL		NULL	NULL
+mlwp_wc_product_meta_lookup	6	max_price	decimal(19,4)	YES	NULL		NULL	NULL
+mlwp_wc_product_meta_lookup	7	onsale	tinyint(1)	YES	0		NULL	NULL
+mlwp_wc_product_meta_lookup	8	stock_quantity	double	YES	NULL		NULL	NULL
+mlwp_wc_product_meta_lookup	9	stock_status	varchar(100)	YES	instock		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_product_meta_lookup	10	rating_count	bigint(20)	YES	0		NULL	NULL
+mlwp_wc_product_meta_lookup	11	average_rating	decimal(3,2)	YES	0.00		NULL	NULL
+mlwp_wc_product_meta_lookup	12	total_sales	bigint(20)	YES	0		NULL	NULL
+mlwp_wc_product_meta_lookup	13	tax_status	varchar(100)	YES	taxable		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_product_meta_lookup	14	tax_class	varchar(100)	YES			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_product_meta_lookup	15	global_unique_id	varchar(100)	YES			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_rate_limits	1	rate_limit_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_rate_limits	2	rate_limit_key	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wc_rate_limits	3	rate_limit_expiry	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_rate_limits	4	rate_limit_remaining	smallint(10)	NO	0		NULL	NULL
+mlwp_wc_reserved_stock	1	order_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wc_reserved_stock	2	product_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wc_reserved_stock	3	stock_quantity	double	NO	0		NULL	NULL
+mlwp_wc_reserved_stock	4	timestamp	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_reserved_stock	5	expires	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_tax_rate_classes	1	tax_rate_class_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_tax_rate_classes	2	name	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_tax_rate_classes	3	slug	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_webhooks	1	webhook_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wc_webhooks	2	status	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_webhooks	3	name	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_webhooks	4	user_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wc_webhooks	5	delivery_url	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_webhooks	6	secret	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_webhooks	7	topic	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wc_webhooks	8	date_created	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_webhooks	9	date_created_gmt	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_webhooks	10	date_modified	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_webhooks	11	date_modified_gmt	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_wc_webhooks	12	api_version	smallint(4)	NO	NULL		NULL	NULL
+mlwp_wc_webhooks	13	failure_count	smallint(10)	NO	0		NULL	NULL
+mlwp_wc_webhooks	14	pending_delivery	tinyint(1)	NO	0		NULL	NULL
+mlwp_weu_group27	1	id	int(11)	NO	NULL	auto_increment	NULL	NULL
+mlwp_weu_group27	2	user_name	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_group27	3	group_name	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_group27	4	email	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_group27	5	datetime	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_weu_sent_email	1	weu_sent_id	int(10) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_weu_sent_email	2	weu_sent_type	varchar(25)	YES	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_sent_email	3	weu_email_subject	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_sent_email	4	weu_email_body	longtext	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_sent_email	5	weu_from_name	varchar(50)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_sent_email	6	weu_from_email	varchar(50)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_sent_email	7	weu_to_type	varchar(25)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_sent_email	8	weu_status	int(1)	NO	NULL		NULL	NULL
+mlwp_weu_sent_email	9	weu_sent_date_time	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_weu_sent_email	10	to_email	varchar(1000)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_sent_email	11	weu_seen	int(1)	NO	NULL		NULL	NULL
+mlwp_weu_sent_email	12	weu_seen_count	int(100)	NO	NULL		NULL	NULL
+mlwp_weu_sent_email	13	image_id	bigint(255)	NO	NULL		NULL	NULL
+mlwp_weu_smtp_conf	1	conf_id	int(11)	NO	NULL	auto_increment	NULL	NULL
+mlwp_weu_smtp_conf	2	smtp_from_name	varchar(50)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	3	smtp_from_email	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	4	smtp_host	varchar(1000)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	5	smtp_smtpsecure	varchar(20)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	6	smtp_port	varchar(20)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	7	smtp_username	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	8	smtp_password	varchar(200)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	9	smtp_mail_limit	int(11)	NO	NULL		NULL	NULL
+mlwp_weu_smtp_conf	10	smtp_priority	int(11)	NO	NULL		NULL	NULL
+mlwp_weu_smtp_conf	11	smtp_mails_used	int(11)	NO	NULL		NULL	NULL
+mlwp_weu_smtp_conf	12	smtp_last_mail_time	varchar(50)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_smtp_conf	13	smtp_status	int(1)	NO	NULL		NULL	NULL
+mlwp_weu_subscribers	1	id	int(11)	NO	NULL	auto_increment	NULL	NULL
+mlwp_weu_subscribers	2	name	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_subscribers	3	email	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_subscribers	4	list	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_subscribers	5	status	int(11)	NO	NULL		NULL	NULL
+mlwp_weu_subscribers	6	authtoken	int(11)	NO	NULL		NULL	NULL
+mlwp_weu_subscribers	7	datetime	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_weu_unsubscriber	1	id	int(11)	NO	NULL	auto_increment	NULL	NULL
+mlwp_weu_unsubscriber	2	uid	int(30)	NO	NULL		NULL	NULL
+mlwp_weu_unsubscriber	3	email	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_unsubscriber	4	list	varchar(100)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_unsubscriber	5	datetime	datetime	NO	NULL		NULL	NULL
+mlwp_weu_user_notification	1	id	int(11)	NO	NULL	auto_increment	NULL	NULL
+mlwp_weu_user_notification	2	template_id	int(11)	NO	NULL		NULL	NULL
+mlwp_weu_user_notification	3	template_value	longtext	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_user_notification	4	email_for	varchar(20)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_user_notification	5	email_by	varchar(20)	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_weu_user_notification	6	email_value	longtext	NO	NULL		utf8mb4	utf8mb4_general_ci
+mlwp_woocommerce_api_keys	1	key_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_api_keys	2	user_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_api_keys	3	description	varchar(200)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_api_keys	4	permissions	varchar(10)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_api_keys	5	consumer_key	char(64)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_api_keys	6	consumer_secret	char(43)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_api_keys	7	nonces	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_api_keys	8	truncated_key	char(7)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_api_keys	9	last_access	datetime	YES	NULL		NULL	NULL
+mlwp_woocommerce_attribute_taxonomies	1	attribute_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_attribute_taxonomies	2	attribute_name	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_attribute_taxonomies	3	attribute_label	varchar(200)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_attribute_taxonomies	4	attribute_type	varchar(20)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_attribute_taxonomies	5	attribute_orderby	varchar(20)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_attribute_taxonomies	6	attribute_public	int(1)	NO	1		NULL	NULL
+mlwp_woocommerce_downloadable_product_permissions	1	permission_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_downloadable_product_permissions	2	download_id	varchar(36)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_downloadable_product_permissions	3	product_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_downloadable_product_permissions	4	order_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_woocommerce_downloadable_product_permissions	5	order_key	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_downloadable_product_permissions	6	user_email	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_downloadable_product_permissions	7	user_id	bigint(20) unsigned	YES	NULL		NULL	NULL
+mlwp_woocommerce_downloadable_product_permissions	8	downloads_remaining	varchar(9)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_downloadable_product_permissions	9	access_granted	datetime	NO	0000-00-00 00:00:00		NULL	NULL
+mlwp_woocommerce_downloadable_product_permissions	10	access_expires	datetime	YES	NULL		NULL	NULL
+mlwp_woocommerce_downloadable_product_permissions	11	download_count	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_woocommerce_log	1	log_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_log	2	timestamp	datetime	NO	NULL		NULL	NULL
+mlwp_woocommerce_log	3	level	smallint(4)	NO	NULL		NULL	NULL
+mlwp_woocommerce_log	4	source	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_log	5	message	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_log	6	context	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_order_itemmeta	1	meta_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_order_itemmeta	2	order_item_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_order_itemmeta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_order_itemmeta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_order_items	1	order_item_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_order_items	2	order_item_name	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_order_items	3	order_item_type	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_order_items	4	order_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_payment_tokenmeta	1	meta_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_payment_tokenmeta	2	payment_token_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_payment_tokenmeta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_payment_tokenmeta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_payment_tokens	1	token_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_payment_tokens	2	gateway_id	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_payment_tokens	3	token	text	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_payment_tokens	4	user_id	bigint(20) unsigned	NO	0		NULL	NULL
+mlwp_woocommerce_payment_tokens	5	type	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_payment_tokens	6	is_default	tinyint(1)	NO	0		NULL	NULL
+mlwp_woocommerce_sessions	1	session_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_sessions	2	session_key	char(32)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_sessions	3	session_value	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_sessions	4	session_expiry	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_shipping_zones	1	zone_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_shipping_zones	2	zone_name	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_shipping_zones	3	zone_order	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_shipping_zone_locations	1	location_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_shipping_zone_locations	2	zone_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_shipping_zone_locations	3	location_code	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_shipping_zone_locations	4	location_type	varchar(40)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_shipping_zone_methods	1	zone_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_shipping_zone_methods	2	instance_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_shipping_zone_methods	3	method_id	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_shipping_zone_methods	4	method_order	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_shipping_zone_methods	5	is_enabled	tinyint(1)	NO	1		NULL	NULL
+mlwp_woocommerce_subscription_downloads	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_subscription_downloads	2	product_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_woocommerce_subscription_downloads	3	subscription_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_woocommerce_tax_rates	1	tax_rate_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_tax_rates	2	tax_rate_country	varchar(2)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_tax_rates	3	tax_rate_state	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_tax_rates	4	tax_rate	varchar(8)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_tax_rates	5	tax_rate_name	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_tax_rates	6	tax_rate_priority	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_tax_rates	7	tax_rate_compound	int(1)	NO	0		NULL	NULL
+mlwp_woocommerce_tax_rates	8	tax_rate_shipping	int(1)	NO	1		NULL	NULL
+mlwp_woocommerce_tax_rates	9	tax_rate_order	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_tax_rates	10	tax_rate_class	varchar(200)	NO			utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_tax_rate_locations	1	location_id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_woocommerce_tax_rate_locations	2	location_code	varchar(200)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_woocommerce_tax_rate_locations	3	tax_rate_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_woocommerce_tax_rate_locations	4	location_type	varchar(40)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_wpforms_analytics_forms	1	form_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wpforms_analytics_forms	2	period_date	date	NO	NULL		NULL	NULL
+mlwp_wpforms_analytics_forms	3	views	int(10) unsigned	NO	0		NULL	NULL
+mlwp_wpforms_analytics_forms	4	unique_sessions	int(10) unsigned	NO	0		NULL	NULL
+mlwp_wpforms_analytics_forms	5	submissions	int(10) unsigned	NO	0		NULL	NULL
+mlwp_wpforms_analytics_snapshots	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wpforms_analytics_snapshots	2	form_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_wpforms_analytics_snapshots	3	session_id	varchar(64)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_analytics_snapshots	4	trigger_type	tinyint(3) unsigned	NO	NULL		NULL	NULL
+mlwp_wpforms_analytics_snapshots	5	page_number	tinyint(3) unsigned	YES	NULL		NULL	NULL
+mlwp_wpforms_analytics_snapshots	6	form_visible	tinyint(1) unsigned	NO	0		NULL	NULL
+mlwp_wpforms_analytics_snapshots	7	payload	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_analytics_snapshots	8	occurred_at	datetime	NO	NULL		NULL	NULL
+mlwp_wpforms_analytics_snapshots	9	processed	tinyint(1) unsigned	NO	0		NULL	NULL
+mlwp_wpforms_logs	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_wpforms_logs	2	title	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_logs	3	message	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_logs	4	types	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_logs	5	create_at	datetime	NO	NULL		NULL	NULL
+mlwp_wpforms_logs	6	form_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_wpforms_logs	7	entry_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_wpforms_logs	8	user_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_wpforms_payments	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_wpforms_payments	2	form_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wpforms_payments	3	status	varchar(10)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	4	subtotal_amount	decimal(26,8)	NO	0.00000000		NULL	NULL
+mlwp_wpforms_payments	5	discount_amount	decimal(26,8)	NO	0.00000000		NULL	NULL
+mlwp_wpforms_payments	6	total_amount	decimal(26,8)	NO	0.00000000		NULL	NULL
+mlwp_wpforms_payments	7	currency	varchar(3)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	8	entry_id	bigint(20)	NO	0		NULL	NULL
+mlwp_wpforms_payments	9	gateway	varchar(20)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	10	type	varchar(12)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	11	mode	varchar(4)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	12	transaction_id	varchar(40)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	13	customer_id	varchar(40)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	14	subscription_id	varchar(40)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	15	subscription_status	varchar(10)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	16	title	varchar(255)	NO			utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payments	17	date_created_gmt	datetime	NO	NULL		NULL	NULL
+mlwp_wpforms_payments	18	date_updated_gmt	datetime	NO	NULL		NULL	NULL
+mlwp_wpforms_payments	19	is_published	tinyint(1)	NO	1		NULL	NULL
+mlwp_wpforms_payment_meta	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_wpforms_payment_meta	2	payment_id	bigint(20)	NO	NULL		NULL	NULL
+mlwp_wpforms_payment_meta	3	meta_key	varchar(255)	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_payment_meta	4	meta_value	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_product_events_queue	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_wpforms_product_events_queue	2	event_name	varchar(64)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_product_events_queue	3	event_context	varchar(20)	NO	user		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_product_events_queue	4	properties	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_product_events_queue	5	occurred_at	datetime	NO	NULL		NULL	NULL
+mlwp_wpforms_tasks_meta	1	id	bigint(20)	NO	NULL	auto_increment	NULL	NULL
+mlwp_wpforms_tasks_meta	2	action	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_tasks_meta	3	data	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wpforms_tasks_meta	4	date	datetime	NO	NULL		NULL	NULL
+mlwp_wp_phpmyadmin_extension__errors_log	1	id	int(50)	NO	NULL	auto_increment	NULL	NULL
+mlwp_wp_phpmyadmin_extension__errors_log	2	gmdate	datetime	YES	NULL		NULL	NULL
+mlwp_wp_phpmyadmin_extension__errors_log	3	function_name	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wp_phpmyadmin_extension__errors_log	4	function_args	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_wp_phpmyadmin_extension__errors_log	5	message	longtext	NO	NULL		utf8mb4	utf8mb4_unicode_520_ci
+mlwp_yoast_expiring_store	1	key_name	varchar(255)	NO	NULL		utf8	utf8_general_ci
+mlwp_yoast_expiring_store	2	value	text	NO	NULL		utf8	utf8_general_ci
+mlwp_yoast_expiring_store	3	exp	datetime	NO	NULL		NULL	NULL
+mlwp_yoast_indexable	1	id	int(11) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_yoast_indexable	2	permalink	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	3	permalink_hash	varchar(40)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	4	object_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	5	object_type	varchar(32)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	6	object_sub_type	varchar(32)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	7	author_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	8	post_parent	bigint(20)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	9	title	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	10	description	mediumtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	11	breadcrumb_title	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	12	post_status	varchar(20)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	13	is_public	tinyint(1)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	14	is_protected	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	15	has_public_posts	tinyint(1)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	16	number_of_pages	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	17	canonical	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	18	primary_focus_keyword	varchar(191)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	19	primary_focus_keyword_score	int(3)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	20	readability_score	int(3)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	21	is_cornerstone	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	22	is_robots_noindex	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	23	is_robots_nofollow	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	24	is_robots_noarchive	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	25	is_robots_noimageindex	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	26	is_robots_nosnippet	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	27	twitter_title	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	28	twitter_image	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	29	twitter_description	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	30	twitter_image_id	varchar(191)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	31	twitter_image_source	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	32	open_graph_title	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	33	open_graph_description	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	34	open_graph_image	longtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	35	open_graph_image_id	varchar(191)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	36	open_graph_image_source	text	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	37	open_graph_image_meta	mediumtext	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	38	link_count	int(11)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	39	incoming_link_count	int(11)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	40	prominent_words_version	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	41	created_at	datetime	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	42	updated_at	timestamp	NO	CURRENT_TIMESTAMP	on update CURRENT_TIMESTAMP	NULL	NULL
+mlwp_yoast_indexable	43	blog_id	bigint(20)	NO	1		NULL	NULL
+mlwp_yoast_indexable	44	language	varchar(32)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	45	region	varchar(32)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	46	schema_page_type	varchar(64)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	47	schema_article_type	varchar(64)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_indexable	48	has_ancestors	tinyint(1)	YES	0		NULL	NULL
+mlwp_yoast_indexable	49	estimated_reading_time_minutes	int(11)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	50	version	int(11)	YES	1		NULL	NULL
+mlwp_yoast_indexable	51	object_last_modified	datetime	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	52	object_published_at	datetime	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	53	inclusive_language_score	int(3)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	54	seo_title_score	int(3)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable	55	meta_description_score	int(3)	YES	NULL		NULL	NULL
+mlwp_yoast_indexable_hierarchy	1	indexable_id	int(11) unsigned	NO	NULL		NULL	NULL
+mlwp_yoast_indexable_hierarchy	2	ancestor_id	int(11) unsigned	NO	NULL		NULL	NULL
+mlwp_yoast_indexable_hierarchy	3	depth	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_indexable_hierarchy	4	blog_id	bigint(20)	NO	1		NULL	NULL
+mlwp_yoast_migrations	1	id	int(11) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_yoast_migrations	2	version	varchar(191)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_primary_term	1	id	int(11) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_yoast_primary_term	2	post_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_yoast_primary_term	3	term_id	bigint(20)	YES	NULL		NULL	NULL
+mlwp_yoast_primary_term	4	taxonomy	varchar(32)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_primary_term	5	created_at	datetime	YES	NULL		NULL	NULL
+mlwp_yoast_primary_term	6	updated_at	timestamp	NO	CURRENT_TIMESTAMP	on update CURRENT_TIMESTAMP	NULL	NULL
+mlwp_yoast_primary_term	7	blog_id	bigint(20)	NO	1		NULL	NULL
+mlwp_yoast_seo_links	1	id	bigint(20) unsigned	NO	NULL	auto_increment	NULL	NULL
+mlwp_yoast_seo_links	2	url	varchar(255)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_seo_links	3	post_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_yoast_seo_links	4	target_post_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_yoast_seo_links	5	type	varchar(8)	NO	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_seo_links	6	indexable_id	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_seo_links	7	target_indexable_id	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_seo_links	8	height	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_seo_links	9	width	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_seo_links	10	size	int(11) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_seo_links	11	language	varchar(32)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_seo_links	12	region	varchar(32)	YES	NULL		utf8mb4	utf8mb4_unicode_ci
+mlwp_yoast_seo_meta	1	object_id	bigint(20) unsigned	NO	NULL		NULL	NULL
+mlwp_yoast_seo_meta	2	internal_link_count	int(10) unsigned	YES	NULL		NULL	NULL
+mlwp_yoast_seo_meta	3	incoming_link_count	int(10) unsigned	YES	NULL		NULL	NULL

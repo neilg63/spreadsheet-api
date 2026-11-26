@@ -20,7 +20,7 @@ Formats: `xlsx`, `xlsm`, `xls`, `xlsb`, `ods`, `csv`, `tsv`, and semicolon-separ
 
 | Step | Endpoint | What happens |
 |---|---|---|
-| 1 | `POST /datasets/upload` | The file is validated and stored. Each non-empty worksheet becomes a **dataset**, and the response shows each one's detected header row, its columns and its first 30 rows. |
+| 1 | `POST /datasets/upload` | The file is validated and stored. Each non-empty worksheet becomes a **dataset**, and the response shows each one's detected header row, its columns and its first rows (30 unless `?rows=` says otherwise). |
 | 2 | `PATCH /datasets/{id}/configure` | Saves a **mapping document** as a schema version and returns a fresh preview. Add `?dry_run=true` to preview only. `GET /datasets/{id}/preview` re-reads the file with the saved mapping. |
 | 3 | `PATCH /datasets/{id}/import` | Imports every row. The source file is deleted once all of its worksheets are imported. |
 | 4 | `GET /datasets/{id}` | Returns the imported rows, with filtering, sorting, full-text search and pagination. |
@@ -39,6 +39,12 @@ curl -G localhost:3000/datasets/$ID --data-urlencode 'filter={"price.amount":{"$
 
 Upload also accepts an optional multipart field `source` holding JSON source options for every
 sheet, for example `{"decimal_comma": true}`.
+
+Previews return `PREVIEW_ROWS` rows (30) unless the request says otherwise: upload, configure
+and preview all take `?rows=`, from 10 up to `MAX_PREVIEW_ROWS` (1000). A longer preview also
+improves the detected column types, since a column that is empty in the first 30 rows has no
+type to detect until a value turns up. `GET /mapping/options` lists the sizes worth offering
+in a menu under `preview_rows`.
 
 ## Deployments and accounts
 
@@ -149,7 +155,7 @@ typos get caught. Validation errors come back together, each tied to the widget 
 | `fields[].type` / `format` / `precision` | `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `time`, `array`, or any library format such as `d2`, `truthy(si,no)`, `dt:%d/%m/%Y`, `int[](\|)` (`-k col\|fmt`). |
 | `fields[].default`, `datetime`, `decimal_comma` | Per-column overrides. |
 | `fields[].required`, `filterable`, `sortable`, `searchable`, `description` | Schema and query metadata. Rows missing a required value are imported but flagged invalid. |
-| `patterns` | Placeholder patterns such as `file_[n]`→`files[]`, `sales_{region}`→`sales.{region}`, `sales_[year]`→`sales[].{year}{amount}`. |
+| `patterns` | Placeholder patterns for columns with part of their name in common. A placeholder (`[n]` a number, `{name}` text, `*` anything) stands where the names differ, at the start, the end or in the middle, and the target refers to it: `file_[n]`→`files[]`, `sales_{region}`→`sales.{region}`, `{fuel}_price`→`price.{fuel}`, `sales_[year]`→`sales[].{year}{amount}`, `{fuel}_price_note_{n}`→`price_{fuel}`. |
 | `exclude`, `exclude_paths` | Drop columns or ranges, or drop nested output paths (`-k -col`, `-K`). |
 | `filter` | Only import rows that match. Accepts either a rule tree (as above) or spread-cli text such as `"age >= 18 and name ILIKE 'a%'"` (`-f`). |
 | `omit_nulls` | Drop null values (`-X`). |
@@ -158,8 +164,8 @@ typos get caught. Validation errors come back together, each tied to the widget 
 | `collection` | Import into an existing collection, given by ID or name, for example when this month's file has a new name. |
 
 Each save creates or updates a row in `api_schema_versions`. Its `definition` holds a JSON
-Schema (draft 2020-12) of one output row, with OpenAPI-style extensions: `x-source` on each
-property, `x-primary-key`, and `x-mapping`, which holds the complete mapping document so every
+Schema (draft 2020-12) of one output row, with three keywords of its own: `x_source` on each
+property, `x_primary_key`, and `x_mapping`, which holds the complete mapping document so every
 version describes itself. `field_spec` holds the flat list of paths with their type and query
 flags. A version stays a draft until its first import publishes it, and published versions are
 immutable, so a later configure creates the next version.
@@ -199,7 +205,8 @@ before use, and every value is sent as a bound parameter.
 src/sheet/mapping.rs     mapping document → spreadsheet-to-json OptionSet
 src/sheet/reader.rs      previews and streaming reads (on the blocking thread pool)
 src/sheet/spec.rs        type inference, field_spec, JSON Schema
-src/sheet/key_pattern.rs, filter_pattern.rs   ported verbatim from spread-cli
+src/sheet/key_pattern.rs   placeholder patterns: began as spread-cli's, now also matches by suffix and middle
+src/sheet/filter_pattern.rs   ported verbatim from spread-cli
 src/importer.rs          batched import, primary keys, validation, upsert merge
 src/query.rs             filter/sort/search → parameterised SurrealQL
 src/models/              one typed model per table in data/schema.surql
