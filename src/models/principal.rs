@@ -1,40 +1,9 @@
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-
-use super::{Datetime, RecordLink};
 use crate::error::{ApiError, ApiResult};
 
-/// `principals`: a caller, keyed `[issuer, external_id]`, so `google/1098...` is
-/// `principals:['google', '1098...']`: a guest (`guest/<hash>`), a registered social login
-/// (`github/<id>`, `google/<sub>`) or a forwarded service tenant (`service/<ref>`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Principal {
-    pub id: RecordLink,
-    pub issuer: RecordLink,
-    pub external_id: String,
-    pub status: PrincipalStatus,
-    /// Plan override; `None` = the issuer's default plan.
-    pub plan: Option<RecordLink>,
-    /// When the override ends.
-    pub plan_until: Option<Datetime>,
-    /// Running sum of `credit_ledger` (unused: there are no paid accounts).
-    pub credits: i64,
-    pub last_seen_at: Datetime,
-    /// Set for issuers with a `principal_ttl` (anonymous principals).
-    pub expires_at: Option<Datetime>,
-    pub created_at: Datetime,
-    pub updated_at: Datetime,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PrincipalStatus {
-    Active,
-    Blocked,
-}
-
-/// A reference to a principal, `<issuer>/<external id>`, e.g. `github/583231` or `service/acme/42`.
-#[derive(Debug, Clone)]
+/// A reference to a principal, `<issuer>/<external id>`, e.g. `github/583231` or
+/// `service/acme/42`: a guest (`guest/<hash>`), a social login, a tenant forwarded in
+/// service mode, or a user of an application that signs its own access tokens.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Me {
     pub issuer: String,
     pub external_id: String,
@@ -52,11 +21,17 @@ impl Me {
         }
     }
 
-    pub fn key(&self) -> Value {
-        json!([self.issuer, self.external_id])
+    /// The principal's id in the database: the whole reference.
+    pub fn id(&self) -> String {
+        format!("{}/{}", self.issuer, self.external_id)
     }
 
-    pub fn owns(&self, owner: &[String]) -> bool {
-        owner.len() == 2 && owner[0] == self.issuer && owner[1] == self.external_id
+    pub fn owns(&self, owner: &str) -> bool {
+        owner.strip_prefix(self.issuer.as_str()).and_then(|rest| rest.strip_prefix('/')) == Some(self.external_id.as_str())
     }
+}
+
+/// The issuer part of a principal id.
+pub fn issuer_of(principal_id: &str) -> &str {
+    principal_id.split_once('/').map_or(principal_id, |(issuer, _)| issuer)
 }

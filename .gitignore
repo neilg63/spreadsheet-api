@@ -2,3 +2,5 @@
 .env
 /data/db/
 /data/uploads/
+/data/*.sqlite*
+/data/issuers.json

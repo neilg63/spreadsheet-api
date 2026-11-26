@@ -21,12 +21,17 @@ use crate::{config::config, routes::AppState};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,surrealdb=warn")))
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,sqlx=warn")))
         .init();
 
     let config = config();
     std::fs::create_dir_all(&config.upload_dir)?;
     let db = db::connect(config).await.map_err(|e| format!("database: {e}"))?;
+    // applications that sign their own access tokens
+    if let Ok(path) = dotenvy::var("ISSUERS_FILE") && !path.trim().is_empty() {
+        let count = auth::token::register_from_file(&db, std::path::Path::new(path.trim())).await.map_err(|e| format!("issuers: {e}"))?;
+        tracing::info!("{count} token issuers registered from {}", path.trim());
+    }
     let state = AppState::new(db, auth::AuthSettings::from_env());
     match state.auth.mode {
         auth::AuthMode::Demo => tracing::info!(

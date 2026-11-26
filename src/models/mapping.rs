@@ -1,24 +1,17 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use super::{Datetime, RecordLink};
 use crate::sheet::mapping::{FieldMapping, MappingDoc};
 
-/// `mappings`: the source-column view of a schema version's mapping document, one per
-/// version. The full document (`sheet::mapping::MappingDoc`) is kept in the version's
-/// `definition["x_mapping"]`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// What `mappings` stores beside a schema version: a flat summary of the mapping
+/// document's columns. The whole document is in the version's definition, under
+/// `x_mapping`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Mapping {
-    pub id: RecordLink,
-    pub schema_version: RecordLink,
-    /// Unique per version; the service writes `default`.
     pub name: String,
     pub sheet: Option<String>,
-    /// 1-based.
     pub header_row: i64,
     pub columns: Vec<MappingColumn>,
-    pub created_at: Datetime,
-    pub updated_at: Datetime,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,13 +39,12 @@ impl MappingColumn {
 }
 
 impl Mapping {
-    /// Content for a new mapping row; the caller adds `schema_version`.
-    pub fn content(doc: &MappingDoc, sheet: Option<&str>, header_row: Option<usize>) -> Value {
-        let columns: Vec<MappingColumn> = doc.fields.iter().map(MappingColumn::from_field).collect();
-        let mut row = json!({ "name": "default", "columns": columns, "header_row": header_row.unwrap_or(1) });
-        if let Some(sheet) = sheet {
-            row["sheet"] = json!(sheet);
+    pub fn content(doc: &MappingDoc, sheet: Option<&str>, header_row: Option<usize>) -> Self {
+        Mapping {
+            name: "default".to_string(),
+            sheet: sheet.map(str::to_string),
+            header_row: header_row.unwrap_or(1) as i64,
+            columns: doc.fields.iter().map(MappingColumn::from_field).collect(),
         }
-        row
     }
 }

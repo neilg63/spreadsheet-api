@@ -1,20 +1,20 @@
 //! Full import of one worksheet into dataset_rows.
 //!
-//! Rows stream from the reader through a bounded channel and are inserted in batches,
-//! several at a time (`IMPORT_CONCURRENCY`), so the importer itself holds only a few
-//! thousand rows however large the sheet. With a primary key, `upsert` mode then carries
-//! over the collection's previous rows whose keys the new file doesn't contain; when the
-//! dataset is marked imported, the schema's event makes it the collection's current data.
+//! Rows stream from the reader through a bounded channel and are inserted a batch at a
+//! time, each batch in its own short transaction, so the importer holds only a few
+//! hundred rows however large the sheet and other writers get a turn between batches.
+//! With a primary key, `upsert` mode then carries over the collection's previous rows
+//! whose keys the new file doesn't contain; a finished import becomes the collection's
+//! current data.
 
 use std::{collections::HashSet, time::Instant};
 
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use tokio::task::JoinSet;
+use sqlx::Row;
 
 use crate::{
-    config::config,
-    db::{Database, run, run_last},
+    db::{self, Database},
     error::{ApiError, ApiResult},
     sheet::{
         mapping::{FieldType, MappingDoc, ResolvedMapping, base_options},
@@ -25,10 +25,9 @@ use crate::{
     store,
 };
 
-const BATCH_SIZE: usize = 1000;
+/// Rows per INSERT statement: 7 values each, well inside SQLite's limit on parameters.
+const BATCH_SIZE: usize = 500;
 const MAX_INVALID_SAMPLES: usize = 20;
-/// How often a batch is tried again when its transaction collides with another batch's.
-const MAX_INSERT_ATTEMPTS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -149,17 +148,25 @@ pub fn value_at<'a>(data: &'a Map<String, Value>, path: &str) -> Option<&'a Valu
     Some(value)
 }
 
+/// One row ready to insert.
+struct NewRow {
+    row_num: i64,
+    pk: Option<String>,
+    /// JSON list of what is wrong with the row; `None` for a valid one.
+    errors: Option<String>,
+    search_text: Option<String>,
+    data: String,
+}
+
 #[derive(Default)]
 struct Progress {
-    batch: Vec<Value>,
+    batch: Vec<NewRow>,
     next_row: i64,
     inserted: i64,
     invalid: i64,
     invalid_samples: Vec<Value>,
     seen_keys: HashSet<String>,
     inference: SpecInference,
-    /// Batches being inserted: at most `IMPORT_CONCURRENCY` at a time.
-    inserts: JoinSet<ApiResult<()>>,
 }
 
 impl Progress {
@@ -181,69 +188,41 @@ impl Progress {
                 self.invalid_samples.push(json!({ "row_num": self.next_row, "errors": errors }));
             }
         }
-        let mut row = json!({ "row_num": self.next_row, "valid": valid, "errors": errors });
-        if let Some(pk) = pk {
-            row["pk"] = json!(pk);
-        }
-        if let Some(text) = rules.search_text(&data) {
-            row["search_text"] = json!(text);
-        }
-        row["data"] = Value::Object(data);
-        self.batch.push(row);
+        self.batch.push(NewRow {
+            row_num: self.next_row,
+            pk,
+            errors: (!valid).then(|| Value::Array(errors).to_string()),
+            search_text: rules.search_text(&data),
+            data: Value::Object(data).to_string(),
+        });
     }
 
-    /// Hands the batch to an insert task. Rows carry their own `row_num`, so batches
-    /// may land in any order; when as many inserts are running as are allowed, this
-    /// waits for one to finish first, which also keeps the reader from running ahead.
+    /// Inserts the batch as one statement in one transaction.
     async fn flush(&mut self, db: &Database, dataset_id: &str) -> ApiResult<()> {
         if self.batch.is_empty() {
             return Ok(());
         }
         let rows = std::mem::take(&mut self.batch);
         self.inserted += rows.len() as i64;
-        let limit = config().import_concurrency;
-        while self.inserts.len() >= limit {
-            self.join_one().await?;
+        // the same text for every full batch, so SQLite prepares it once
+        let mut sql = String::from("INSERT INTO dataset_rows (dataset_id, row_num, pk, valid, errors, search_text, data) VALUES ");
+        sql.push_str(&vec!["(?, ?, ?, ?, ?, ?, jsonb(?))"; rows.len()].join(", "));
+        let mut query = sqlx::query(&sql);
+        for row in &rows {
+            query = query
+                .bind(dataset_id)
+                .bind(row.row_num)
+                .bind(&row.pk)
+                .bind(row.errors.is_none())
+                .bind(&row.errors)
+                .bind(&row.search_text)
+                .bind(&row.data);
         }
-        self.inserts.spawn(insert_batch(db.clone(), dataset_id.to_string(), rows, limit > 1));
+        let mut tx = db::write(db).await?;
+        query.execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(())
     }
-
-    /// Waits until every batch handed over so far has been inserted.
-    async fn settle(&mut self) -> ApiResult<()> {
-        while !self.inserts.is_empty() {
-            self.join_one().await?;
-        }
-        Ok(())
-    }
-
-    async fn join_one(&mut self) -> ApiResult<()> {
-        match self.inserts.join_next().await {
-            Some(Ok(result)) => result,
-            Some(Err(e)) => Err(ApiError::Internal(format!("insert task failed: {e}"))),
-            None => Ok(()),
-        }
-    }
-}
-
-/// Inserts one batch. Batches inserted side by side can collide on shared index keys;
-/// the database then asks for the transaction to be tried again, so `retry` keeps a
-/// copy of the rows to do that with.
-async fn insert_batch(db: Database, dataset_id: String, rows: Vec<Value>, retry: bool) -> ApiResult<()> {
-    const SQL: &str = "LET $ds = type::record('datasets', $id);
-        INSERT INTO dataset_rows $rows.map(|$r| $r.extend({ dataset: $ds })) RETURN NONE;";
-    let mut rows = Value::Array(rows);
-    for attempt in 1.. {
-        let kept = retry.then(|| rows.clone());
-        match run(&db, SQL, json!({ "id": dataset_id, "rows": rows })).await {
-            Ok(_) => break,
-            Err(err) => match kept {
-                Some(copy) if attempt < MAX_INSERT_ATTEMPTS && err.to_string().contains("can be retried") => rows = copy,
-                _ => return Err(err),
-            },
-        }
-    }
-    Ok(())
 }
 
 /// Runs the import; on failure the dataset is marked `failed` with the reason.
@@ -264,8 +243,8 @@ pub async fn import(db: &Database, dataset: &DatasetInfo, request: ImportRequest
     let mut opts = base_options(&path, sheet_index, &doc.source).map_err(ApiError::InvalidMapping)?;
     resolved.apply(&mut opts, &doc);
 
-    let features = store::plan_features(db, &dataset.owner).await?;
-    if !doc.primary_key.is_empty() && !features.iter().any(|f| f == "links") {
+    let plan = store::plan_of(db, &dataset.owner).await?;
+    if !doc.primary_key.is_empty() && !plan.has("links") {
         return Err(ApiError::Forbidden("primary keys need a plan with the 'links' feature".into()));
     }
     let previous = dataset.current_id.clone().filter(|id| *id != dataset.id);
@@ -277,25 +256,10 @@ pub async fn import(db: &Database, dataset: &DatasetInfo, request: ImportRequest
         None if !doc.primary_key.is_empty() && previous.is_some() => ImportMode::Upsert,
         None => ImportMode::Replace,
     };
-    let max_rows = run_last(
-        db,
-        "RETURN fn::effective_plan(type::record('principals', $owner)).limits.max_rows_per_import;",
-        json!({ "owner": dataset.owner }),
-    )
-    .await?
-    .as_u64()
-    .unwrap_or(10_000) as u32;
+    let max_rows = plan.max_rows_per_import.clamp(0, u32::MAX as i64) as u32;
     let max_rows = doc.source.max_rows.map_or(max_rows, |m| m.min(max_rows));
 
-    run(
-        db,
-        "LET $ds = type::record('datasets', $id);
-        UPDATE $ds SET status = 'importing', error = NONE RETURN NONE;
-        DELETE dataset_rows WHERE dataset = $ds;",
-        json!({ "id": dataset.id }),
-    )
-    .await?;
-
+    store::begin_import(db, &dataset.id).await?;
     let started = Instant::now();
     let rules = RowRules::new(&doc, &resolved, dataset.field_spec());
     let outcome = run_import(db, dataset, &doc, &resolved, &rules, opts, max_rows, mode, previous.as_deref()).await;
@@ -308,15 +272,7 @@ pub async fn import(db: &Database, dataset: &DatasetInfo, request: ImportRequest
             Ok(summary)
         }
         Err(err) => {
-            let message = err.to_string();
-            run(
-                db,
-                "LET $ds = type::record('datasets', $id);
-                DELETE dataset_rows WHERE dataset = $ds;
-                UPDATE $ds SET status = 'failed', error = $error RETURN NONE;",
-                json!({ "id": dataset.id, "error": message }),
-            )
-            .await?;
+            store::fail_import(db, &dataset.id, &err.to_string()).await?;
             Err(err)
         }
     }
@@ -355,7 +311,6 @@ async fn run_import(
     }
     reader_task.await.map_err(|e| ApiError::Internal(format!("reader task failed: {e}")))??;
     progress.flush(db, &dataset.id).await?;
-    progress.settle().await?;
     let imported = progress.inserted;
 
     let mut retained = 0;
@@ -367,24 +322,7 @@ async fn run_import(
     let spec = progress.inference.finish(doc, Some(resolved));
     let spec = merge_flags(spec, dataset.field_spec());
     let definition = json_schema(&spec, doc, Some(resolved));
-    let pk: Value = if doc.primary_key.is_empty() { Value::Null } else { json!(doc.primary_key) };
-    run(
-        db,
-        "LET $ds = type::record('datasets', $id);
-        UPDATE $ds SET status = 'imported', num_rows = $num_rows, num_invalid = $num_invalid,
-            imported_at = time::now(), error = NONE RETURN NONE;
-        LET $v = $ds.schema_version;
-        IF $v.status = 'draft' {
-            UPDATE $v SET definition = $definition, field_spec = $spec, status = 'published' RETURN NONE;
-        };
-        UPDATE $ds.collection SET schema = $v.schema,
-            primary_key = IF $pk { $pk } ELSE { NONE } RETURN NONE;",
-        json!({
-            "id": dataset.id, "num_rows": progress.inserted, "num_invalid": progress.invalid,
-            "definition": definition, "spec": spec, "pk": pk,
-        }),
-    )
-    .await?;
+    store::finish_import(db, dataset, progress.inserted, progress.invalid, &definition, &spec, &doc.primary_key).await?;
 
     let dataset = store::get_dataset(db, &dataset.id).await?;
     Ok(json!({
@@ -423,33 +361,32 @@ async fn carry_over(
     let mut retained = 0;
     let mut after = 0i64;
     loop {
-        let page = run_last(
-            db,
-            "SELECT row_num, data FROM dataset_rows
-                WHERE dataset = type::record('datasets', $old) AND row_num > $after AND valid = true
-                ORDER BY row_num LIMIT $limit;",
-            json!({ "old": previous, "after": after, "limit": BATCH_SIZE }),
+        let page = sqlx::query(
+            "SELECT row_num, json(data) AS data FROM dataset_rows
+              WHERE dataset_id = ? AND row_num > ? AND valid = 1 ORDER BY row_num LIMIT ?",
         )
+        .bind(previous)
+        .bind(after)
+        .bind(BATCH_SIZE as i64)
+        .fetch_all(db)
         .await?;
-        let rows = page.as_array().cloned().unwrap_or_default();
-        if rows.is_empty() {
+        if page.is_empty() {
             break;
         }
-        for row in &rows {
-            after = row["row_num"].as_i64().unwrap_or(after);
-            let Some(data) = row["data"].as_object() else { continue };
+        for row in &page {
+            after = row.try_get("row_num")?;
+            let Ok(Value::Object(data)) = serde_json::from_str::<Value>(&row.try_get::<String, _>("data")?) else { continue };
             // keys are recomputed, so a changed primary_key definition still dedupes correctly
-            let Some(pk) = rules.primary_key(data) else { continue };
+            let Some(pk) = rules.primary_key(&data) else { continue };
             if progress.seen_keys.contains(&pk) {
                 continue;
             }
-            let errors = rules.errors(data);
-            progress.push(data.clone(), rules, Some(pk), errors);
+            let errors = rules.errors(&data);
+            progress.push(data, rules, Some(pk), errors);
             retained += 1;
         }
         progress.flush(db, dataset_id).await?;
     }
-    progress.settle().await?;
     Ok(retained)
 }
 

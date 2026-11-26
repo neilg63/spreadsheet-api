@@ -11,12 +11,13 @@ use crate::sheet::mapping::MappingError;
 #[derive(Debug)]
 pub enum ApiError {
     BadRequest(String),
-    /// No acceptable identity (service mode without the forwarded reference or token).
+    /// No acceptable identity: service mode without the forwarded reference or token, or
+    /// an access token that does not verify.
     Unauthorized(String),
     NotFound(String),
     Forbidden(String),
     Conflict(String),
-    /// A rule enforced by the schema (plan limits, immutable versions ...) rejected the write.
+    /// A plan limit or another rule of the service (immutable versions ...) rejected the write.
     Rejected(String),
     Unprocessable(String),
     /// The mapping document doesn't fit the request or the worksheet.
@@ -72,16 +73,9 @@ impl IntoResponse for ApiError {
     }
 }
 
-impl From<surrealdb::Error> for ApiError {
-    fn from(err: surrealdb::Error) -> Self {
-        let text = err.to_string();
-        // Schema events THROW plain-English messages ("Hourly import limit reached ..."):
-        // surface those as rule rejections rather than opaque 500s.
-        // (possibly wrapped, e.g. "Error while processing event ...: An error occurred: ...")
-        match text.split_once("An error occurred: ") {
-            Some((_, thrown)) => ApiError::Rejected(thrown.to_string()),
-            None => ApiError::Internal(format!("database error: {text}")),
-        }
+impl From<sqlx::Error> for ApiError {
+    fn from(err: sqlx::Error) -> Self {
+        ApiError::Internal(format!("database error: {err}"))
     }
 }
 

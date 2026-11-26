@@ -1,28 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{Datetime, RecordLink};
 use crate::sheet::mapping::MappingDoc;
 pub use crate::sheet::spec::FieldSpec;
 
-/// `api_schema_versions`: one version of an api_schema. A version stays a draft until its
-/// first import publishes it; published versions are immutable.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ApiSchemaVersion {
-    pub id: RecordLink,
-    pub schema: RecordLink,
-    /// 1, 2, 3 ... within the schema.
-    pub version: i64,
-    pub status: VersionStatus,
-    /// JSON Schema (draft 2020-12) of one output row, with `x_source`, `x_primary_key`
-    /// and `x_mapping` (the complete mapping document) extensions.
-    pub definition: Value,
-    /// The flat list of output paths with their type and query flags.
-    pub field_spec: Vec<FieldSpec>,
-    pub created_at: Datetime,
-    pub updated_at: Datetime,
-}
-
+/// A version stays a draft until its first import publishes it; published versions are
+/// not changed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VersionStatus {
@@ -31,8 +14,18 @@ pub enum VersionStatus {
     Deprecated,
 }
 
+impl VersionStatus {
+    pub fn parse(text: &str) -> Self {
+        match text {
+            "published" => Self::Published,
+            "deprecated" => Self::Deprecated,
+            _ => Self::Draft,
+        }
+    }
+}
+
 /// The parts of a version the upload and configure flows need.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct VersionInfo {
     pub id: String,
     pub version: i64,

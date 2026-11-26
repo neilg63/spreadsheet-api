@@ -1,5 +1,5 @@
 //! End-to-end: upload -> configure -> import -> query -> re-import with upsert, through
-//! the real router and an in-memory SurrealDB with data/schema.surql applied.
+//! the real router and an in-memory SQLite database with data/schema.sql applied.
 
 use axum::{
     Router,
@@ -7,14 +7,13 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use crate::{
     auth::{AuthMode, AuthSettings, Provider},
     config::config,
-    db, models, routes,
+    db, routes,
 };
 
 async fn database() -> db::Database {
@@ -206,19 +205,6 @@ fn urlencode(text: &str) -> String {
         .collect()
 }
 
-fn strip_nulls(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            map.retain(|_, v| !v.is_null());
-            map.values_mut().for_each(strip_nulls);
-        }
-        Value::Array(items) => items.iter_mut().for_each(strip_nulls),
-        _ => {}
-    }
-}
-
-/// Reads every record of `table` into `T` and back: a field the model lacks, or reads
-/// differently, fails the round trip.
 #[tokio::test]
 async fn preview_size_follows_the_rows_parameter() {
     let app = app().await;
@@ -257,68 +243,6 @@ async fn preview_size_follows_the_rows_parameter() {
 
     let options = get(&app, "/mapping/options").await;
     assert_eq!(options["preview_rows"]["options"], json!([10, 30, 50, 100, 250, 500, 1000]));
-}
-
-async fn check_model<T: DeserializeOwned + Serialize>(db: &db::Database, table: &str) {
-    let rows = db::run(db, &format!("SELECT * FROM {table};"), json!({})).await.unwrap().pop().unwrap();
-    let rows = rows.as_array().unwrap();
-    assert!(!rows.is_empty(), "{table} has no records to check");
-    for row in rows {
-        let model: T = serde_json::from_value(row.clone()).unwrap_or_else(|e| panic!("{table}: {e}\n{row}"));
-        let (mut back, mut row) = (serde_json::to_value(&model).unwrap(), row.clone());
-        strip_nulls(&mut back);
-        strip_nulls(&mut row);
-        assert_eq!(back, row, "{table} does not round-trip through its model");
-    }
-}
-
-#[tokio::test]
-async fn models_match_the_schema() {
-    let db = database().await;
-    let app = routes::router(routes::AppState::new(db.clone(), service_settings()));
-    let uploaded = upload(&app, "catalogue.xlsx").await;
-    let id = uploaded["datasets"][0]["dataset_id"].as_str().unwrap();
-    let mapping = json!({
-        "source": { "header_row": 4 },
-        "primary_key": ["sku"],
-        "fields": [{ "source": "SKU", "required": true }, { "source": "name", "searchable": true }, { "source": "D", "default": 0 }]
-    });
-    let (status, json) = patch(&app, &format!("/datasets/{id}/configure"), mapping).await;
-    assert_eq!(status, StatusCode::OK, "{json}");
-    let (status, json) = patch(&app, &format!("/datasets/{id}/import"), json!({})).await;
-    assert_eq!(status, StatusCode::OK, "{json}");
-
-    // tables the routes don't write yet
-    let sql = "
-        LET $me = principals:['service', 'local'];
-        CREATE social_users CONTENT { principal: $me, provider: 'google', email: 'someone@example.com' };
-        CREATE usage_events CONTENT { principal: $me, metric: 'api_request', qty: 2000, ip: '127.0.0.1' };
-        CREATE credit_ledger CONTENT { principal: $me, delta: 100, reason: 'purchase', note: 'top-up' };
-        LET $child = (SELECT VALUE id FROM collections LIMIT 1)[0];
-        LET $parent = (CREATE ONLY collections CONTENT { owner: $me, name: 'parent', primary_key: ['sku'] }).id;
-        LET $link = (RELATE ONLY $child->links_to->$parent SET name = 'parent', from_path = ['sku']).id;
-        CREATE endpoints CONTENT { owner: $me, collection: $child, include_links: [$link], config: { x: 'lng' } };
-        CREATE auth_sessions CONTENT { principal: $me, token_hash: 'abc', ip: '127.0.0.1', expires_at: time::now() + 1d };
-        CREATE auth_states:xyz CONTENT { provider: 'github', pkce_verifier: 'v', return_to: '/', guest: $me };";
-    db::run(&db, sql, json!({})).await.unwrap();
-
-    check_model::<models::Plan>(&db, "plans").await;
-    check_model::<models::Issuer>(&db, "issuers").await;
-    check_model::<models::Principal>(&db, "principals").await;
-    check_model::<models::SocialUser>(&db, "social_users").await;
-    check_model::<models::UsageEvent>(&db, "usage_events").await;
-    check_model::<models::CreditEntry>(&db, "credit_ledger").await;
-    check_model::<models::Upload>(&db, "uploads").await;
-    check_model::<models::ApiSchema>(&db, "api_schemas").await;
-    check_model::<models::ApiSchemaVersion>(&db, "api_schema_versions").await;
-    check_model::<models::Mapping>(&db, "mappings").await;
-    check_model::<models::Collection>(&db, "collections").await;
-    check_model::<models::Link>(&db, "links_to").await;
-    check_model::<models::Dataset>(&db, "datasets").await;
-    check_model::<models::DatasetRow>(&db, "dataset_rows").await;
-    check_model::<models::Endpoint>(&db, "endpoints").await;
-    check_model::<models::AuthSession>(&db, "auth_sessions").await;
-    check_model::<models::AuthState>(&db, "auth_states").await;
 }
 
 fn cookie_value(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
@@ -544,3 +468,180 @@ async fn demo_login_with_a_provider_keeps_the_guest_uploads() {
 
 
 
+
+/// An application's signing key, as the application would hold it.
+struct Signer {
+    issuer: &'static str,
+    key: jsonwebtoken::EncodingKey,
+    public_key: String,
+}
+
+impl Signer {
+    fn new(issuer: &'static str) -> Self {
+        use base64::Engine;
+        use ring::signature::KeyPair;
+        let pkcs8 = ring::signature::Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new()).unwrap();
+        let pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+        Signer {
+            issuer,
+            key: jsonwebtoken::EncodingKey::from_ed_der(pkcs8.as_ref()),
+            public_key: base64::engine::general_purpose::STANDARD.encode(pair.public_key().as_ref()),
+        }
+    }
+
+    fn config(&self) -> crate::auth::token::IssuerConfig {
+        serde_json::from_value(json!({ "id": self.issuer, "name": "Partner app", "keys": [{ "kid": "k1", "public_key": self.public_key }] })).unwrap()
+    }
+
+    /// A token for `sub` with these grants; `edit` changes the claims before signing.
+    fn token(&self, sub: &str, grants: Value, edit: impl FnOnce(&mut Value)) -> String {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let mut claims = json!({ "iss": self.issuer, "sub": sub, "aud": "spreadsheet-api", "iat": now, "exp": now + 600, "grants": grants });
+        edit(&mut claims);
+        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::EdDSA);
+        header.kid = Some("k1".into());
+        format!("Bearer {}", jsonwebtoken::encode(&header, &claims, &self.key).unwrap())
+    }
+}
+
+#[tokio::test]
+async fn applications_control_access_with_signed_tokens() {
+    let db = database().await;
+    let mut auth = service_settings();
+    auth.default_ref = None;
+    let app = routes::router(routes::AppState::new(db.clone(), auth));
+    let partner = Signer::new("partner");
+    let rival = Signer::new("rival");
+    crate::auth::token::register_issuers(&db, &[partner.config(), rival.config()]).await.unwrap();
+
+    // the application's own server manages a tenant's data
+    let manage = partner.token("acme/1", json!([{ "resource": "datasets", "actions": ["upload", "configure", "import", "read"] }]), |_| {});
+    let manage = [("authorization", manage.as_str())];
+    let (_, me, _) = send(&app, "GET", "/auth/me", &manage, None).await;
+    assert_eq!((me["account"].as_str(), me["user_ref"].as_str()), (Some("token"), Some("partner/acme/1")));
+    assert_eq!((me["allowance"]["plan"].as_str(), me["grants"][0]["resource"].as_str()), (Some("Service"), Some("datasets")));
+
+    let read_only = partner.token("acme/1", json!([{ "resource": "datasets", "actions": ["read"] }]), |_| {});
+    assert_eq!(upload_with(&app, "catalogue.xlsx", &[("authorization", read_only.as_str())]).await.0, StatusCode::FORBIDDEN);
+    let (status, uploaded) = upload_with(&app, "catalogue.xlsx", &manage).await;
+    assert_eq!(status, StatusCode::OK, "{uploaded}");
+    let id = uploaded["datasets"][0]["dataset_id"].as_str().unwrap().to_string();
+    let mapping = json!({ "source": { "header_row": 4 }, "fields": [{ "source": "SKU" }, { "source": "name" }, { "source": "Unit Price", "path": "price" }] });
+    let (status, body, _) = send(&app, "PATCH", &format!("/datasets/{id}/configure"), &manage, Some(mapping)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body, _) = send(&app, "PATCH", &format!("/datasets/{id}/import"), &[("authorization", read_only.as_str())], None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    let (status, body, _) = send(&app, "PATCH", &format!("/datasets/{id}/import"), &manage, None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(send(&app, "GET", "/datasets", &manage, None).await.1["total"], 2, "one per worksheet");
+
+    // unlisted until the application says otherwise
+    assert_eq!(get(&app, &format!("/datasets/{id}")).await["total"], 4);
+    let (status, body, _) = send(&app, "PATCH", &format!("/datasets/{id}/access"), &manage, Some(json!({ "visibility": "private" }))).await;
+    assert_eq!((status, body["dataset"]["visibility"].as_str()), (StatusCode::OK, Some("private")), "{body}");
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}"), &[], None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}/export"), &[], None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}"), &manage, None).await.1["total"], 4);
+
+    // a viewer is handed a narrow token: one dataset, some rows, some fields
+    let narrow = json!([{ "resource": format!("dataset/{id}"), "actions": ["read"],
+        "constraints": { "filter": { "sku": { "$in": ["A-1", "B-7"] } }, "fields": ["sku", "name"], "max_page_size": 1 } }]);
+    let viewer = partner.token("viewer/9", narrow.clone(), |_| {});
+    let viewer = [("authorization", viewer.as_str())];
+    let (status, page, _) = send(&app, "GET", &format!("/datasets/{id}?limit=50&sort=sku"), &viewer, None).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!((page["total"].as_i64(), page["limit"].as_i64()), (Some(2), Some(1)));
+    assert_eq!(page["rows"], json!([{ "sku": "A-1", "name": "Red widget" }]));
+    assert_eq!(page["fields"].as_array().unwrap().len(), 2, "the other fields are not described either");
+    // the token's filter cannot be widened, and it grants nothing else
+    let all = urlencode(r#"{"$or":[{"sku":"A-2"},{"sku":"A-1"}]}"#);
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}?filter={all}"), &viewer, None).await.1["total"], 1);
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}/export"), &viewer, None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(send(&app, "PATCH", &format!("/datasets/{id}/import"), &viewer, None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(send(&app, "GET", "/datasets", &viewer, None).await.0, StatusCode::FORBIDDEN);
+
+    let exporter = partner.token("viewer/9", json!([{ "resource": format!("dataset/{id}"), "actions": ["export"], "constraints": { "fields": ["sku"] } }]), |_| {});
+    let (status, rows, _) = send(&app, "GET", &format!("/datasets/{id}/export"), &[("authorization", exporter.as_str())], None).await;
+    assert_eq!((status, rows.as_array().map(Vec::len)), (StatusCode::OK, Some(4)));
+    assert_eq!(rows[0], json!({ "sku": "A-1" }));
+
+    // another application cannot reach this data, whatever its token claims
+    let outsider = rival.token("acme/1", json!([{ "resource": format!("dataset/{id}"), "actions": ["read"] }, { "resource": "datasets", "actions": ["read"] }]), |_| {});
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}"), &[("authorization", outsider.as_str())], None).await.0, StatusCode::NOT_FOUND);
+
+    // tokens that must not verify
+    let refused = [
+        ("signed by another key", rival.token("viewer/9", narrow.clone(), |c| c["iss"] = json!("partner"))),
+        ("expired", partner.token("viewer/9", narrow.clone(), |c| {
+            c["exp"] = json!(c["iat"].as_u64().unwrap() - 120);
+            c["iat"] = json!(c["iat"].as_u64().unwrap() - 600);
+        })),
+        ("valid for too long", partner.token("viewer/9", narrow.clone(), |c| c["exp"] = json!(c["iat"].as_u64().unwrap() + 86_400))),
+        ("for another service", partner.token("viewer/9", narrow.clone(), |c| c["aud"] = json!("someone-else"))),
+        ("without iat", partner.token("viewer/9", narrow.clone(), |c| {
+            c.as_object_mut().unwrap().remove("iat");
+        })),
+        ("an unknown resource", partner.token("viewer/9", json!([{ "resource": "endpoint/x", "actions": ["read"] }]), |_| {})),
+        ("an unknown issuer", partner.token("viewer/9", narrow.clone(), |c| c["iss"] = json!("nobody"))),
+    ];
+    for (why, token) in &refused {
+        let (status, body, _) = send(&app, "GET", &format!("/datasets/{id}"), &[("authorization", token.as_str())], None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{why}: {body}");
+    }
+
+    // one token withdrawn early, then the whole application
+    let revocable = partner.token("viewer/9", narrow.clone(), |c| c["jti"] = json!("t-1"));
+    let revocable = [("authorization", revocable.as_str())];
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}"), &revocable, None).await.0, StatusCode::OK);
+    sqlx::query("INSERT INTO revoked_tokens (issuer, jti, expires_at) VALUES ('partner', 't-1', '2999-01-01T00:00:00.000Z')").execute(&db).await.unwrap();
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}"), &revocable, None).await.0, StatusCode::UNAUTHORIZED);
+    crate::auth::token::register_issuers(&db, &[rival.config()]).await.unwrap();
+    assert_eq!(send(&app, "GET", &format!("/datasets/{id}"), &viewer, None).await.0, StatusCode::UNAUTHORIZED, "an application dropped from the file is disabled");
+}
+
+#[tokio::test]
+async fn filters_compare_by_type_and_ignore_case_in_any_alphabet() {
+    let app = app().await;
+    let csv = "name,qty,tags,when\nÉclair,5,a;b,2024-03-01\nzebra,12,b;c,2025-01-15\nApple,,c,2023-12-31\n";
+    let mut body = b"--XBOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"mixed.csv\"\r\n\r\n".to_vec();
+    body.extend(csv.as_bytes());
+    body.extend(b"\r\n--XBOUNDARY--\r\n");
+    let request = Request::post("/datasets/upload").header("content-type", "multipart/form-data; boundary=XBOUNDARY").body(Body::from(body)).unwrap();
+    let (status, uploaded) = call(&app, request).await;
+    assert_eq!(status, StatusCode::OK, "{uploaded}");
+    let id = uploaded["datasets"][0]["dataset_id"].as_str().unwrap().to_string();
+    let mapping = json!({ "fields": [{ "source": "tags", "format": "text[](;)" }, { "source": "name", "searchable": true }] });
+    let (status, body) = patch(&app, &format!("/datasets/{id}/configure"), mapping).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = patch(&app, &format!("/datasets/{id}/import"), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let names = |result: Value| -> Vec<String> { result["rows"].as_array().unwrap().iter().map(|r| r["name"].as_str().unwrap().to_string()).collect() };
+    let find = async |filter: Value| names(get(&app, &format!("/datasets/{id}?filter={}", urlencode(&filter.to_string()))).await);
+    let rule = |field: &str, op: &str, value: Value| json!({ "field": field, "op": op, "value": value });
+
+    assert_eq!(find(rule("name", "eq", json!("éclair"))).await, ["Éclair"], "case is ignored beyond A to Z");
+    assert_eq!(find(rule("name", "starts_with", json!("ÉC"))).await, ["Éclair"]);
+    assert_eq!(find(rule("name", "ends_with", json!("RA"))).await, ["zebra"]);
+    assert_eq!(find(json!({ "name": "éclair" })).await, Vec::<String>::new(), "the MongoDB form of equality is exact");
+    assert_eq!(find(json!({ "qty": { "$gt": 5 } })).await, ["zebra"]);
+    assert_eq!(find(json!({ "qty": { "$gte": "5" } })).await, Vec::<String>::new(), "a number is not compared with text");
+    assert_eq!(find(json!({ "not": rule("qty", "between", json!([1, 20])) })).await, ["Apple"], "an empty value is outside every range");
+    // an empty cell of a text file arrives as "", which exists but is empty
+    assert_eq!(find(json!({ "field": "qty", "op": "empty" })).await, ["Apple"]);
+    assert_eq!(find(json!({ "qty": { "$exists": false } })).await, Vec::<String>::new());
+    assert_eq!(find(json!({ "missing": { "$exists": false } })).await.len(), 3);
+    assert_eq!(find(json!({ "qty": { "$ne": 5 } })).await, ["zebra", "Apple"]);
+    assert_eq!(find(json!({ "when": { "$gte": "2024-01-01", "$lt": "2025-01-01" } })).await, ["Éclair"]);
+    assert_eq!(find(json!({ "name": { "$regex": "^[a-z]+$" } })).await, ["zebra"]);
+    assert_eq!(find(json!({ "name": { "$regex": "^a", "$options": "i" } })).await, ["Apple"]);
+    assert_eq!(find(json!({ "tags": { "$has": "b" } })).await, ["Éclair", "zebra"]);
+    assert_eq!(find(json!({ "tags": { "$all": ["b", "c"] } })).await, ["zebra"]);
+    assert_eq!(find(rule("tags", "any", json!(["a", "c"]))).await, ["Éclair", "zebra", "Apple"]);
+    assert_eq!(find(json!({ "tags": { "$size": 1 } })).await, ["Apple"]);
+    assert_eq!(find(json!({ "name": { "$nin": ["zebra"] } })).await, ["Éclair", "Apple"]);
+
+    assert_eq!(names(get(&app, &format!("/datasets/{id}?sort=-qty")).await), ["zebra", "Éclair", "Apple"]);
+    assert_eq!(names(get(&app, &format!("/datasets/{id}?q=eclair")).await), ["Éclair"], "search ignores accents and case");
+    assert_eq!(get(&app, &format!("/datasets/{id}?q=%22%20OR%20*")).await["total"], 0, "search syntax in the words is inert");
+}

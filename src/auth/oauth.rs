@@ -17,10 +17,11 @@ use oauth2::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sqlx::Row;
 
-use super::{AccountKind, AuthMode, AuthSettings, Caller, Provider, session};
+use super::{Access, AccountKind, AuthMode, AuthSettings, Caller, Provider, session};
 use crate::{
-    db::{run, run_one},
+    db::NOW,
     error::{ApiError, ApiResult},
     models::Me,
     routes::AppState,
@@ -73,19 +74,15 @@ pub async fn login(
         .add_scopes(provider.scopes.iter().cloned().map(Scope::new))
         .set_pkce_challenge(challenge)
         .url();
-    let guest = caller.is_guest().then(|| caller.me.key());
-    run(
-        &state.db,
-        "CREATE type::record('auth_states', $state) CONTENT {
-            provider: $provider, pkce_verifier: $verifier, return_to: $return_to,
-            guest: IF $guest { type::record('principals', $guest) } ELSE { NONE }
-        } RETURN NONE;",
-        json!({
-            "state": csrf.secret(), "provider": provider.name, "verifier": verifier.secret(),
-            "return_to": safe_return_to(&state.auth, params.return_to.as_deref()), "guest": guest,
-        }),
-    )
-    .await?;
+    let guest = caller.is_guest().then(|| caller.me.id());
+    sqlx::query("INSERT INTO auth_states (id, provider, pkce_verifier, return_to, guest) VALUES (?, ?, ?, ?, ?)")
+        .bind(csrf.secret())
+        .bind(&provider.name)
+        .bind(verifier.secret())
+        .bind(safe_return_to(&state.auth, params.return_to.as_deref()))
+        .bind(guest)
+        .execute(&state.db)
+        .await?;
     // ties the callback to this browser, so a forged callback link can't log someone in
     let cookie = session::set_cookie(&state.auth, LOGIN_COOKIE, csrf.secret(), 600);
     Ok(([(header::SET_COOKIE, cookie)], Redirect::to(url.as_str())).into_response())
@@ -98,12 +95,11 @@ pub struct CallbackParams {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
 struct LoginState {
     provider: String,
     pkce_verifier: String,
     return_to: String,
-    guest: Option<Vec<String>>,
+    guest: Option<String>,
     live: bool,
 }
 
@@ -200,19 +196,24 @@ pub async fn callback(
         return Err(ApiError::BadRequest("this sign-in was started in another browser or has expired; try again".into()));
     }
     // single use: read and delete in one go
-    let row = run_one(
-        &state.db,
-        "LET $s = type::record('auth_states', $state);
-        LET $row = (SELECT provider, pkce_verifier, return_to, IF guest { record::id(guest) } AS guest,
-            expires_at > time::now() AS live FROM ONLY $s);
-        DELETE $s;
-        RETURN $row;",
-        json!({ "state": state_token }),
-    )
+    let row = sqlx::query(&format!(
+        "DELETE FROM auth_states WHERE id = ? RETURNING provider, pkce_verifier, return_to, guest, expires_at > {NOW} AS live"
+    ))
+    .bind(&state_token)
+    .fetch_optional(&state.db)
     .await?;
-    let login: LoginState = row
-        .and_then(|r| serde_json::from_value(r).ok())
-        .filter(|s: &LoginState| s.live && s.provider == provider.name)
+    let login = match row {
+        Some(row) => Some(LoginState {
+            provider: row.try_get("provider")?,
+            pkce_verifier: row.try_get("pkce_verifier")?,
+            return_to: row.try_get("return_to")?,
+            guest: row.try_get("guest")?,
+            live: row.try_get("live")?,
+        }),
+        None => None,
+    };
+    let login = login
+        .filter(|s| s.live && s.provider == provider.name)
         .ok_or_else(|| ApiError::BadRequest("this sign-in link has expired; try again".into()))?;
     let clear_login = session::set_cookie(&state.auth, LOGIN_COOKIE, "", 0);
     if let Some(error) = &params.error {
@@ -237,8 +238,7 @@ pub async fn callback(
     let me = Me { issuer: provider.name.clone(), external_id: profile.id.clone() };
     store::touch_principal(&state.db, &me).await?;
     save_social_user(&state, &me, &provider.name, &profile).await?;
-    if let Some([issuer, external_id]) = login.guest.as_deref() {
-        let guest = Me { issuer: issuer.clone(), external_id: external_id.clone() };
+    if let Some(guest) = login.guest.as_deref().and_then(|g| Me::parse(g).ok()) {
         let moved = store::claim_guest_data(&state.db, &guest, &me).await?;
         tracing::info!("{}/{} signed in and kept {moved} guest collections", me.issuer, me.external_id);
     }
@@ -251,26 +251,18 @@ pub async fn callback(
 }
 
 async fn save_social_user(state: &AppState, me: &Me, provider: &str, profile: &Profile) -> ApiResult<()> {
-    run(
-        &state.db,
-        "LET $p = type::record('principals', $me);
-        LET $existing = (SELECT VALUE id FROM social_users WHERE principal = $p LIMIT 1)[0];
-        LET $details = {
-            provider: $provider,
-            email: IF $email { $email } ELSE { NONE },
-            name: IF $name { $name } ELSE { NONE },
-            avatar_uri: IF $avatar { $avatar } ELSE { NONE },
-            locale: IF $locale { $locale } ELSE { NONE },
-            last_login_at: time::now()
-        };
-        IF $existing { UPDATE $existing MERGE $details RETURN NONE }
-        ELSE { CREATE social_users CONTENT $details.extend({ principal: $p }) RETURN NONE };",
-        json!({
-            "me": me.key(), "provider": provider,
-            "email": profile.email.clone().unwrap_or_default(), "name": profile.name.clone().unwrap_or_default(),
-            "avatar": profile.avatar.clone().unwrap_or_default(), "locale": profile.locale.clone().unwrap_or_default(),
-        }),
-    )
+    sqlx::query(&format!(
+        "INSERT INTO social_users (principal, provider, email, name, avatar_uri, locale) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (principal) DO UPDATE SET provider = excluded.provider, email = excluded.email, name = excluded.name,
+             avatar_uri = excluded.avatar_uri, locale = excluded.locale, last_login_at = {NOW}"
+    ))
+    .bind(me.id())
+    .bind(provider)
+    .bind(&profile.email)
+    .bind(&profile.name)
+    .bind(&profile.avatar)
+    .bind(&profile.locale)
+    .execute(&state.db)
     .await?;
     Ok(())
 }
@@ -287,13 +279,21 @@ pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> ApiRes
 pub async fn me(State(state): State<AppState>, caller: Caller) -> ApiResult<Json<Value>> {
     let allowance = store::touch_principal(&state.db, &caller.me).await?;
     let profile = if caller.kind == AccountKind::Registered {
-        run_one(
-            &state.db,
-            "SELECT provider, email, name, avatar_uri, locale, last_login_at FROM social_users
-                WHERE principal = type::record('principals', $me) LIMIT 1;",
-            json!({ "me": caller.me.key() }),
-        )
-        .await?
+        sqlx::query("SELECT provider, email, name, avatar_uri, locale, last_login_at FROM social_users WHERE principal = ?")
+            .bind(caller.me.id())
+            .fetch_optional(&state.db)
+            .await?
+            .map(|row| -> ApiResult<Value> {
+                Ok(json!({
+                    "provider": row.try_get::<String, _>("provider")?,
+                    "email": row.try_get::<Option<String>, _>("email")?,
+                    "name": row.try_get::<Option<String>, _>("name")?,
+                    "avatar_uri": row.try_get::<Option<String>, _>("avatar_uri")?,
+                    "locale": row.try_get::<Option<String>, _>("locale")?,
+                    "last_login_at": row.try_get::<String, _>("last_login_at")?,
+                }))
+            })
+            .transpose()?
     } else {
         None
     };
@@ -309,6 +309,10 @@ pub async fn me(State(state): State<AppState>, caller: Caller) -> ApiResult<Json
     };
     Ok(Json(json!({
         "account": caller.kind,
+        "grants": match &caller.access {
+            Access::Grants(grants) => json!(grants),
+            Access::Owner => Value::Null,
+        },
         "user_ref": format!("{}/{}", caller.me.issuer, caller.me.external_id),
         "profile": profile,
         "allowance": allowance,

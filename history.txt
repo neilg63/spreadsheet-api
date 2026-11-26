@@ -1,4 +1,0 @@
-#V2
-(INFO FOR DB).tables
-INFO FOR TABLE datasets;
-select * from datasets;

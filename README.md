@@ -1,7 +1,8 @@
 # Spreadsheet API
 
 Upload spreadsheets, map each worksheet to JSON with a versioned, API-doc-style schema,
-import the rows into an embedded SurrealDB, and query them as a Web endpoint.
+import the rows into SQLite, and query them as a Web endpoint. Other applications can
+control who reads what by signing access tokens.
 
 The successor to [sheetapi](https://github.com/neilg63/sheetapi). It uses
 [spreadsheet-to-json](https://crates.io/crates/spreadsheet-to-json) 0.5 and exposes
@@ -26,7 +27,7 @@ Formats: `xlsx`, `xlsm`, `xls`, `xlsb`, `ods`, `csv`, `tsv`, and semicolon-separ
 | 4 | `GET /datasets/{id}` | Returns the imported rows, with filtering, sorting, full-text search and pagination. |
 
 Also available: `GET /datasets/{id}/export?format=json|jsonl` (every row, streamed as a
-download), `GET /datasets` (the caller's upload history), `GET /auth/me` (account type,
+download), `PATCH /datasets/{id}/access` (who may read the rows; see Access tokens), `GET /datasets` (the caller's upload history), `GET /auth/me` (account type,
 profile, allowance and sign-in links), `GET /mapping/options` (the value lists for the mapping
 and filter widgets), and `GET /` (a list of all routes and the active mode).
 
@@ -104,11 +105,73 @@ curl -H 'X-User-Ref: acme/42' -H 'content-type: application/json' -d '{"url": "h
 Paths are resolved (including `..` and symlinks) and must stay inside `SHARED_UPLOAD_DIR`.
 For local development, `DEFAULT_USER_REF` gives requests without the header an identity.
 
+### Access tokens: letting another application control access
+
+In either mode, a request may carry `Authorization: Bearer <jwt>`, a token signed by an
+application registered in `ISSUERS_FILE`. The application holds an Ed25519 private key; this
+service holds only the public key, and verifies each token with it.
+
+```json
+[{ "id": "mainusers", "name": "Main app", "plan": "service", "max_token_secs": 900,
+   "keys": [{ "kid": "2026-11", "public_key": "<PEM, or the 32 raw bytes in base64>" }] }]
+```
+
+The file is the whole list: at startup each application is added or updated, a key no longer
+listed is revoked, and an application no longer listed is disabled. A token is a JWT signed
+with `EdDSA`:
+
+```json
+{ "iss": "mainusers", "sub": "acme/42", "aud": "spreadsheet-api",
+  "iat": 1795729200, "exp": 1795730100,
+  "grants": [{ "resource": "dataset/0199…", "actions": ["read", "export"],
+               "constraints": { "filter": { "region": "north" }, "fields": ["sku", "price"], "max_page_size": 100 } }] }
+```
+
+The caller is the principal `<iss>/<sub>` (`mainusers/acme/42`), on the application's plan, and
+may do only what the grants list.
+
+| Part | Values |
+|---|---|
+| `resource` | `datasets` (everything the token's own principal owns, and the right to create more), `dataset/<id>`, `collection/<id>` |
+| `actions` | `read` (query rows, list datasets), `export`, `upload`, `configure` (preview, mapping, visibility), `import` |
+| `constraints` | For reading. `filter`: always applied, in either filter form. `fields`: the only fields returned. `max_page_size`: caps `limit` |
+
+Two tokens cover most uses. The application's server sends a **management token**
+(`datasets` with `upload`, `configure`, `import`, `read`) to load and shape a tenant's data. It
+hands a browser or a partner a short-lived **access token** for one dataset, perhaps narrowed
+to some rows and fields.
+
+What the service enforces:
+
+- **Isolation.** A token only reaches data owned by principals of its own issuer, whatever it claims.
+- **Expiry.** `iat` and `exp` are required, and `exp - iat` may not exceed the issuer's
+  `max_token_secs` (or `MAX_TOKEN_SECS`). `aud` must be `TOKEN_AUDIENCE`.
+- **Revocation.** A token with a `jti` listed in the `revoked_tokens` table is refused. Short
+  lifetimes are the main control; revoking a key or dropping the application from the file
+  cuts off everything it signed.
+- **Visibility.** Rows are readable by anyone with the dataset id unless the collection is
+  private: `PATCH /datasets/{id}/access` with `{"visibility": "private"}` (a plan with
+  `private_endpoints`). Then only the owner or a token granting `read` gets them, and
+  everyone else gets `404`. Constraints only bind on private data: anyone can read unlisted
+  data without a token.
+
+A request that may not touch a dataset is answered `404`, as if it did not exist. A token
+that fails to verify is answered `401` with the reason.
+
 ### Schema changes
 
-`data/schema.surql` sets up a new database. Changes for existing databases go in
-`data/migrations/*.surql`, which are applied once each, in name order, inside a transaction.
+`data/schema.sql` sets up a new database. Changes for existing databases go in
+`data/migrations/*.sql`, which are applied once each, in name order, inside a transaction.
 A new database records them all as applied.
+
+The database is one file (`DB_PATH`) in WAL mode, so it can be read while the service runs:
+
+```bash
+sqlite3 data/sheets.sqlite "SELECT id, status, num_rows FROM datasets"
+```
+
+Rows are stored as JSONB; read them with `json(data)`, and a field with
+`data ->> '$.price.amount'`.
 
 ## Mapping document
 
@@ -199,6 +262,18 @@ MongoDB operators: `$eq $ne $gt $gte $lt $lte $in $nin $all $size $exists $regex
 `$contains $startsWith $endsWith $between $has $and $or $nor $not`. Field paths are validated
 before use, and every value is sent as a bound parameter.
 
+How values compare:
+
+- **By type.** A number is only greater or less than a number, and text than text. ISO dates
+  are text and order correctly. A condition on a missing or empty value is false, so its
+  negation is true.
+- **Case.** In a rule tree, `eq`, `starts_with`, `ends_with` and `contains` ignore case unless
+  `case_sensitive` is set, in any alphabet. MongoDB-style equality is exact.
+- **Sorting.** Rows with nothing in the sort field come last, in either direction.
+- **Search.** `q` finds rows containing every word, ignoring case and accents.
+- **Indexes.** Filters and sorts read every row of the dataset; only the dataset, row order
+  and primary key are indexed. That takes about 0.4 s on a million rows.
+
 ## Layout
 
 ```
@@ -208,18 +283,21 @@ src/sheet/spec.rs        type inference, field_spec, JSON Schema
 src/sheet/key_pattern.rs   placeholder patterns: began as spread-cli's, now also matches by suffix and middle
 src/sheet/filter_pattern.rs   ported verbatim from spread-cli
 src/importer.rs          batched import, primary keys, validation, upsert merge
-src/query.rs             filter/sort/search → parameterised SurrealQL
-src/models/              one typed model per table in data/schema.surql
-src/store.rs, db.rs      queries against data/schema.surql
+src/query.rs             filter/sort/search → parameterised SQL over the JSON rows
+src/models/              the records as the routes use them
+src/store.rs             queries, and the rules that depend on the caller's plan
+src/db.rs                the SQLite pool, schema set-up and helpers
 src/routes/              HTTP handlers
-src/auth/                demo/service identity, OAuth sign-in, sessions, rate limiting
+src/auth/                demo/service identity, access tokens and grants, OAuth sign-in, sessions, rate limiting
+data/schema.sql          every table
 data/migrations/         schema changes for existing databases
-docs/models.md           the models, their fields and rules, and where they appear in the API
+docs/models.md           how the tables fit together, their rules, and the shapes the API returns
 ```
 
 `cargo test` runs the unit tests and end-to-end tests against an in-memory database: upload →
 configure → import → query → upsert, service-mode tenants and URL/path intake, guest limits and
-rate limiting, and a full GitHub-style sign-in against a mock OAuth provider.
+rate limiting, a full GitHub-style sign-in against a mock OAuth provider, access tokens and
+grants, and how filters compare values.
 `cargo run --example make_fixtures` regenerates `tests/fixtures`.
 
 ## Licence

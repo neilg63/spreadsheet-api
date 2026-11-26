@@ -4,10 +4,16 @@ use std::{path::PathBuf, sync::OnceLock};
 #[derive(Debug, Clone)]
 pub struct Config {
     pub address: String,
-    /// Directory for the embedded SurrealKV store, or "memory" for a throwaway in-memory DB.
+    /// The SQLite database file, or "memory" for a throwaway in-memory database.
     pub db_path: String,
-    pub db_namespace: String,
-    pub db_database: String,
+    /// Connections in the pool: readers run side by side, writers take turns.
+    pub db_connections: u32,
+    /// Page cache per connection, in KiB.
+    pub db_cache_kb: u64,
+    /// The `aud` claim an access token must carry.
+    pub token_audience: String,
+    /// Longest lifetime of an access token, for issuers that don't set their own.
+    pub max_token_secs: u64,
     /// Uploaded source files live here until they are fully imported or purged.
     pub upload_dir: PathBuf,
     pub max_upload_bytes: usize,
@@ -20,9 +26,6 @@ pub struct Config {
     pub max_page_size: u32,
     pub default_page_size: u32,
     pub sweep_interval_secs: u64,
-    /// How many batches of rows one import inserts at a time: by default one per CPU
-    /// core, up to 4.
-    pub import_concurrency: usize,
 }
 
 impl Config {
@@ -31,9 +34,11 @@ impl Config {
         let num = |key: &str, default: u64| dotenvy::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default);
         Config {
             address: format!("{}:{}", var("LOCAL_ADDRESS", "0.0.0.0"), var("PORT", "3000")),
-            db_path: var("DB_PATH", "data/db"),
-            db_namespace: var("DB_NAMESPACE", "sheets"),
-            db_database: var("DB_DATABASE", "api"),
+            db_path: var("DB_PATH", "data/sheets.sqlite"),
+            db_connections: num("DB_CONNECTIONS", 8).clamp(2, 64) as u32,
+            db_cache_kb: num("DB_CACHE_KB", 8192).max(256),
+            token_audience: var("TOKEN_AUDIENCE", "spreadsheet-api"),
+            max_token_secs: num("MAX_TOKEN_SECS", 3600).max(60),
             upload_dir: PathBuf::from(var("UPLOAD_DIR", "data/uploads")),
             max_upload_bytes: parse_size(&var("MAX_UPLOAD_SIZE", "50MB")).unwrap_or(50 * 1024 * 1024),
             // identity, sign-in and rate-limit settings: auth::AuthSettings
@@ -42,10 +47,6 @@ impl Config {
             max_page_size: num("MAX_PAGE_SIZE", 1000) as u32,
             default_page_size: num("DEFAULT_PAGE_SIZE", 100) as u32,
             sweep_interval_secs: num("SWEEP_INTERVAL_SECS", 60),
-            import_concurrency: {
-                let cores = std::thread::available_parallelism().map_or(1, |n| n.get() as u64);
-                num("IMPORT_CONCURRENCY", cores.min(4)).clamp(1, 32) as usize
-            },
         }
     }
 }

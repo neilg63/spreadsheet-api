@@ -7,16 +7,17 @@ use axum::{
     http::header,
     response::{IntoResponse, Response},
 };
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json, value::RawValue};
+use sqlx::Row;
 use tokio::io::AsyncWriteExt;
 
 use super::AppState;
 use crate::{
     config::config,
-    db::run,
+    db::bind_json,
     error::{ApiError, ApiResult},
-    auth::{AccountKind, Caller},
+    auth::{AccountKind, Action, Caller, Constraints, MaybeCaller, authorise},
     importer::{self, ImportRequest},
     query::{self, QueryParams},
     sheet::{
@@ -24,7 +25,7 @@ use crate::{
         reader::{self, SheetPreview},
         spec::{self, FieldSpec},
     },
-    models::{CollectionInfo, DatasetInfo, DatasetStatus, Mapping, Me, VersionStatus},
+    models::{CollectionInfo, DatasetInfo, DatasetStatus, Mapping, Me, VersionStatus, Visibility},
     store,
 };
 
@@ -291,6 +292,7 @@ async fn copy_shared(state: &AppState, requested: &str, filename: Option<&str>, 
 /// `?rows=` sets how many rows of each worksheet the response previews.
 pub async fn upload(State(state): State<AppState>, caller: Caller, Query(params): Query<PreviewParams>, request: Request) -> ApiResult<Json<Value>> {
     let rows = preview_rows(params.rows);
+    caller.require_own(Action::Upload)?;
     let allowance = store::touch_principal(&state.db, &caller.me).await?;
     let max_bytes = state.max_upload_bytes(&caller);
     let is_json = request
@@ -324,12 +326,7 @@ pub async fn upload(State(state): State<AppState>, caller: Caller, Query(params)
         }
         Err(err) => {
             store::remove_upload_file(&file.storage_key);
-            let _ = run(
-                &state.db,
-                "UPDATE type::record('uploads', $id) SET purged_at = time::now() WHERE purged_at = NONE;",
-                json!({ "id": file.id }),
-            )
-            .await;
+            let _ = store::mark_upload_purged(&state.db, &file.id).await;
             Err(err)
         }
     }
@@ -473,6 +470,7 @@ pub async fn list(State(state): State<AppState>, caller: Caller, Query(params): 
     if caller.is_guest() {
         return Err(ApiError::Forbidden("sign in to see your upload history".into()));
     }
+    caller.require_own(Action::Read)?;
     let me = caller.me;
     store::touch_principal(&state.db, &me).await?;
     let limit = params.limit.unwrap_or(config().default_page_size).clamp(1, config().max_page_size);
@@ -481,10 +479,48 @@ pub async fn list(State(state): State<AppState>, caller: Caller, Query(params): 
     Ok(Json(json!({ "total": total, "start": start, "limit": limit, "datasets": datasets })))
 }
 
-/// GET /datasets/{id}: imported rows with filtering, sorting and pagination.
-pub async fn show(State(state): State<AppState>, Path(id): Path<String>, Query(params): Query<QueryParams>) -> ApiResult<Json<Value>> {
-    let dataset = store::get_dataset(&state.db, &id).await?;
-    let built = query::build(&params, dataset.field_spec(), config().default_page_size, config().max_page_size)?;
+/// The dataset, if the caller may do `action` on it, with the constraints that apply.
+/// A dataset the caller may not touch is reported as not found.
+async fn permitted(state: &AppState, caller: Option<&Caller>, id: &str, action: Action) -> ApiResult<(DatasetInfo, Constraints)> {
+    let dataset = store::get_dataset(&state.db, id).await?;
+    let constraints = authorise(caller, action, &dataset)?;
+    Ok((dataset, constraints))
+}
+
+/// A row as stored, or cut down to the fields an access token allows.
+fn shaped(row: String, fields: Option<&[String]>) -> ApiResult<Box<RawValue>> {
+    let unreadable = |e: serde_json::Error| ApiError::Internal(format!("unreadable row: {e}"));
+    match fields {
+        None => RawValue::from_string(row).map_err(unreadable),
+        Some(fields) => {
+            let Value::Object(map) = serde_json::from_str(&row).map_err(unreadable)? else {
+                return Err(ApiError::Internal("a row is not an object".into()));
+            };
+            serde_json::value::to_raw_value(&query::project(&map, fields)).map_err(unreadable)
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct Page<'a> {
+    dataset: Value,
+    fields: Vec<&'a FieldSpec>,
+    total: i64,
+    start: u32,
+    limit: u32,
+    rows: Vec<Box<RawValue>>,
+}
+
+/// GET /datasets/{id}: imported rows with filtering, sorting and pagination. Open to
+/// anyone unless the data is private; then to its owner, or an access token granting `read`.
+pub async fn show(
+    State(state): State<AppState>,
+    MaybeCaller(caller): MaybeCaller,
+    Path(id): Path<String>,
+    Query(params): Query<QueryParams>,
+) -> ApiResult<Response> {
+    let (dataset, constraints) = permitted(&state, caller.as_ref(), &id, Action::Read).await?;
+    let built = query::build(&dataset.id, &params, dataset.field_spec(), config().default_page_size, config().max_page_size, &constraints)?;
     let features = store::plan_features(&state.db, &dataset.owner).await?;
     for (used, feature, what) in [
         (built.uses_filter, "filter", "Filtering"),
@@ -495,20 +531,28 @@ pub async fn show(State(state): State<AppState>, Path(id): Path<String>, Query(p
             return Err(ApiError::Forbidden(format!("{what} is not available on this dataset owner's plan")));
         }
     }
-    let mut vars = built.vars;
-    vars.insert("dataset".into(), json!(dataset.id));
-    let sql = format!("{}\n{}", built.count_sql, built.rows_sql);
-    let mut results = run(&state.db, &sql, Value::Object(vars)).await?;
-    let rows = results.pop().unwrap_or_else(|| json!([]));
-    let total = results.pop().and_then(|t| t.as_u64()).unwrap_or(0);
-    Ok(Json(json!({
-        "dataset": dataset.summary(),
-        "fields": dataset.field_spec(),
-        "total": total,
-        "start": built.start,
-        "limit": built.limit,
-        "rows": rows,
-    })))
+    let (count_sql, rows_sql) = (built.count_sql(), built.rows_sql());
+    let total: i64 = built.binds.iter().fold(sqlx::query(&count_sql), bind_json).fetch_one(&state.db).await?.try_get(0)?;
+    let fields = constraints.fields.as_deref();
+    let rows = built
+        .binds
+        .iter()
+        .fold(sqlx::query(&rows_sql), bind_json)
+        .fetch_all(&state.db)
+        .await?
+        .iter()
+        .map(|row| shaped(row.try_get(0)?, fields))
+        .collect::<ApiResult<Vec<_>>>()?;
+    let page = Page {
+        dataset: dataset.summary(),
+        // a token that limits the fields is not told about the others
+        fields: dataset.field_spec().iter().filter(|spec| fields.is_none_or(|f| f.contains(&spec.path))).collect(),
+        total,
+        start: built.start,
+        limit: built.limit,
+        rows,
+    };
+    Ok(Json(page).into_response())
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -519,8 +563,14 @@ pub struct ExportParams {
 }
 
 /// GET /datasets/{id}/export: every imported row as a download, streamed page by page.
-pub async fn export(State(state): State<AppState>, Path(id): Path<String>, Query(params): Query<ExportParams>) -> ApiResult<Response> {
-    let dataset = store::get_dataset(&state.db, &id).await?;
+/// Open like GET /datasets/{id}; an access token needs `export`.
+pub async fn export(
+    State(state): State<AppState>,
+    MaybeCaller(caller): MaybeCaller,
+    Path(id): Path<String>,
+    Query(params): Query<ExportParams>,
+) -> ApiResult<Response> {
+    let (dataset, constraints) = permitted(&state, caller.as_ref(), &id, Action::Export).await?;
     if !matches!(dataset.status, DatasetStatus::Imported | DatasetStatus::Superseded) {
         return Err(ApiError::Conflict("this dataset has not been imported yet".into()));
     }
@@ -529,44 +579,45 @@ pub async fn export(State(state): State<AppState>, Path(id): Path<String>, Query
         "jsonl" | "ndjson" => true,
         other => return Err(ApiError::BadRequest(format!("unknown export format '{other}'; use json or jsonl"))),
     };
-    let only_valid = !params.include_invalid.unwrap_or(false);
+    let all = QueryParams { include_invalid: params.include_invalid, ..Default::default() };
+    let built = query::build(&dataset.id, &all, dataset.field_spec(), 1000, 1000, &constraints)?;
     let (tx, rx) = async_channel::bounded::<Result<Bytes, std::io::Error>>(8);
     let db = state.db.clone();
-    let dataset_id = dataset.id.clone();
     tokio::spawn(async move {
-        let sql = format!(
-            "SELECT row_num, data FROM dataset_rows WHERE dataset = type::record('datasets', $id) AND row_num > $after {}
-                ORDER BY row_num LIMIT 1000;",
-            if only_valid { "AND valid = true" } else { "" }
-        );
+        let sql = format!("SELECT row_num, json(data) FROM dataset_rows WHERE {} AND row_num > ? ORDER BY row_num LIMIT 1000", built.where_sql);
         let (mut after, mut first) = (0i64, true);
         if !jsonl && tx.send(Ok(Bytes::from_static(b"["))).await.is_err() {
             return;
         }
         loop {
-            let page = match crate::db::run_last(&db, &sql, json!({ "id": dataset_id, "after": after })).await {
-                Ok(Value::Array(rows)) if !rows.is_empty() => rows,
-                Ok(_) => break,
+            let page = built.binds.iter().fold(sqlx::query(&sql), bind_json).bind(after).fetch_all(&db).await;
+            let chunk = page.map_err(ApiError::from).and_then(|rows| {
+                let mut chunk = String::new();
+                for row in &rows {
+                    after = row.try_get(0)?;
+                    if !jsonl && !first {
+                        chunk.push(',');
+                    }
+                    first = false;
+                    chunk.push_str(shaped(row.try_get(1)?, constraints.fields.as_deref())?.get());
+                    if jsonl {
+                        chunk.push('\n');
+                    }
+                }
+                Ok(chunk)
+            });
+            match chunk {
+                Ok(chunk) if chunk.is_empty() => break,
+                Ok(chunk) => {
+                    if tx.send(Ok(Bytes::from(chunk))).await.is_err() {
+                        return; // the client went away
+                    }
+                }
                 Err(err) => {
                     // an error mid-stream can only abort the download
                     let _ = tx.send(Err(std::io::Error::other(err.to_string()))).await;
                     return;
                 }
-            };
-            let mut chunk = String::new();
-            for row in &page {
-                after = row["row_num"].as_i64().unwrap_or(after);
-                if !jsonl && !first {
-                    chunk.push(',');
-                }
-                first = false;
-                chunk.push_str(&row["data"].to_string());
-                if jsonl {
-                    chunk.push('\n');
-                }
-            }
-            if tx.send(Ok(Bytes::from(chunk))).await.is_err() {
-                return; // the client went away
             }
         }
         if !jsonl {
@@ -589,6 +640,21 @@ pub async fn export(State(state): State<AppState>, Path(id): Path<String>, Query
         .into_response())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccessRequest {
+    pub visibility: Visibility,
+}
+
+/// PATCH /datasets/{id}/access: sets who may read the dataset's collection.
+/// Body: `{"visibility": "unlisted" | "public" | "private"}`.
+pub async fn access(State(state): State<AppState>, caller: Caller, Path(id): Path<String>, Json(body): Json<AccessRequest>) -> ApiResult<Json<Value>> {
+    let (dataset, _) = permitted(&state, Some(&caller), &id, Action::Configure).await?;
+    store::set_visibility(&state.db, &dataset, body.visibility).await?;
+    let dataset = store::get_dataset(&state.db, &id).await?;
+    Ok(Json(json!({ "dataset": dataset.summary() })))
+}
+
 /// GET /datasets/{id}/preview: re-reads the source file with the saved mapping.
 /// `?rows=` sets how many rows come back.
 pub async fn preview(
@@ -597,8 +663,7 @@ pub async fn preview(
     Path(id): Path<String>,
     Query(params): Query<PreviewParams>,
 ) -> ApiResult<Json<Value>> {
-    let me = caller.me;
-    let dataset = store::get_own_dataset(&state.db, &me, &id).await?;
+    let (dataset, _) = permitted(&state, Some(&caller), &id, Action::Configure).await?;
     let path = dataset.require_source()?;
     let doc = dataset.doc();
     let preview = reader::preview(&path, dataset.sheet_index(), &doc, preview_rows(params.rows))
@@ -626,9 +691,11 @@ pub async fn configure(
     Query(params): Query<ConfigureParams>,
     body: Bytes,
 ) -> ApiResult<Json<Value>> {
-    let (db, me) = (&state.db, caller.me);
-    store::touch_principal(db, &me).await?;
-    let dataset = store::get_own_dataset(db, &me, &id).await?;
+    let db = &state.db;
+    store::touch_principal(db, &caller.me).await?;
+    let (dataset, _) = permitted(&state, Some(&caller), &id, Action::Configure).await?;
+    // collections and schemas belong to the dataset's owner, whoever is acting for them
+    let me = Me::parse(&dataset.owner)?;
     if dataset.status == DatasetStatus::Importing {
         return Err(ApiError::Conflict("this dataset is being imported; try again when it finishes".into()));
     }
@@ -703,9 +770,8 @@ async fn save_mapping(
 /// PATCH /datasets/{id}/import: imports every row with the saved mapping.
 /// Body (optional): `{"mode": "replace" | "upsert"}`.
 pub async fn import(State(state): State<AppState>, caller: Caller, Path(id): Path<String>, body: Bytes) -> ApiResult<Json<Value>> {
-    let me = caller.me;
-    store::touch_principal(&state.db, &me).await?;
-    let dataset = store::get_own_dataset(&state.db, &me, &id).await?;
+    store::touch_principal(&state.db, &caller.me).await?;
+    let (dataset, _) = permitted(&state, Some(&caller), &id, Action::Import).await?;
     let request: ImportRequest = if body.iter().all(u8::is_ascii_whitespace) {
         ImportRequest::default()
     } else {

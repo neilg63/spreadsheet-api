@@ -2,7 +2,7 @@
 name = "spreadsheet-api"
 version = "0.2.0"
 edition = "2024"
-description = "Upload spreadsheets, map their worksheets to JSON with a versioned schema, and serve them as queryable Web endpoints backed by SurrealDB."
+description = "Upload spreadsheets, map their worksheets to JSON with a versioned schema, and serve them as queryable Web endpoints backed by SQLite."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/neilg63/spreadsheet-api"
 
@@ -12,8 +12,11 @@ axum = { version = "0.8", features = ["multipart", "macros"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "limit", "trace"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
-surrealdb = { version = "3.3", features = ["kv-surrealkv", "kv-mem"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "regexp"] }
+libsqlite3-sys = "0.30"
+jsonwebtoken = "9"
+base64 = "0.22"
 dotenvy = "0.15"
 async-channel = "2"
 uuid = { version = "1", features = ["v4", "v7"] }
@@ -27,11 +30,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 rust_xlsxwriter = "0.89"
 tower = { version = "0.5", features = ["util"] }
+ring = "0.17"
 http-body-util = "0.1"
 
-# A smaller release binary: the embedded SurrealDB engine is most of its size. Stripping
-# removes the symbol table (panic backtraces then show addresses, not names); fat LTO on
-# one codegen unit removes duplicated generic code, at the cost of a much slower build.
+# A smaller release binary: stripping removes the symbol table (panic backtraces then show
+# addresses, not names); fat LTO on one codegen unit removes duplicated generic code, at the
+# cost of a slower build.
 [profile.release]
 strip = true
 lto = "fat"

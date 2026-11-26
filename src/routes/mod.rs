@@ -85,7 +85,8 @@ pub fn router(state: AppState) -> Router {
         .route("/datasets/{id}/export", get(datasets::export))
         .route("/datasets/{id}/preview", get(datasets::preview))
         .route("/datasets/{id}/configure", patch(datasets::configure))
-        .route("/datasets/{id}/import", patch(datasets::import));
+        .route("/datasets/{id}/import", patch(datasets::import))
+        .route("/datasets/{id}/access", patch(datasets::access));
     if state.auth.mode == AuthMode::Demo {
         routes = routes
             .route("/auth/{provider}/login", get(oauth::login))
@@ -134,6 +135,7 @@ async fn welcome(State(state): State<AppState>) -> Json<Value> {
             { "method": "GET", "path": "/datasets/{id}/preview", "query": { "rows": "rows to preview" }, "description": "Re-read the source file with the saved mapping" },
             { "method": "PATCH", "path": "/datasets/{id}/configure", "query": { "dry_run": "true to preview without saving", "rows": "rows to preview" }, "body": "mapping document (see /mapping/options)", "description": "Save the field mapping as a schema version" },
             { "method": "PATCH", "path": "/datasets/{id}/import", "body": "{\"mode\": \"replace\" | \"upsert\"} (optional)", "description": "Import every row; the source file is deleted once all its worksheets are imported" },
+            { "method": "PATCH", "path": "/datasets/{id}/access", "body": "{\"visibility\": \"unlisted\" | \"public\" | \"private\"}", "description": "Set who may read the rows: anyone with the id, or only the owner and access tokens that grant it" },
             { "method": "GET", "path": "/datasets/{id}", "query": { "filter": "JSON, MongoDB style or rule tree", "sort": "price,-name", "q": "full-text search", "limit": "page size", "start": "offset", "page": "1-based page", "include_invalid": "true to include rows that failed validation" }, "description": "Query imported rows" },
             { "method": "GET", "path": "/datasets/{id}/export", "query": { "format": "json (default) or jsonl", "include_invalid": "true to include invalid rows" }, "description": "Download every imported row" },
             { "method": "GET", "path": "/datasets", "description": "The caller's datasets (not for guests)" },
