@@ -162,7 +162,7 @@ async fn welcome(State(state): State<AppState>) -> Json<Value> {
             "query_params": { "dry_run": "true to validate and preview without saving", "rows": rows },
             "body_params": {
                 "source": "How the sheet is read: header row, first data row, column naming",
-                "fields": "Columns to rename, nest, cast, default, require or leave out",
+                "fields": "Columns to rename, nest, cast, default, require, leave out, or leave out only where empty (omit_empty)",
                 "patterns": "Rules for columns that share part of their name: sales_{region} to sales.{region}",
                 "exclude": "Columns to leave out: names, start..end ranges or patterns",
                 "exclude_paths": "Nested output paths to leave out",

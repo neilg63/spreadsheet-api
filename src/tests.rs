@@ -752,3 +752,58 @@ async fn home_lists_every_route_with_its_method_and_parameters() {
     assert_eq!(demo["routes"]["login"]["path"], "/auth/{provider}/login");
     assert_eq!(demo["routes"]["logout"]["method"], "POST");
 }
+
+#[tokio::test]
+async fn a_long_worksheet_is_imported_as_far_as_the_row_limit() {
+    let app = app().await;
+    let (id, _) = upload_csv(&app, "id,name\n1,a\n2,b\n3,c\n4,d\n").await;
+    let (status, body) = patch(&app, &format!("/datasets/{id}/configure"), json!({ "source": { "max_rows": 3 } })).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, imported) = patch(&app, &format!("/datasets/{id}/import"), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{imported}");
+    assert_eq!((imported["num_rows"].as_i64(), imported["truncated"].as_bool(), imported["row_limit"].as_i64()), (Some(3), Some(true), Some(3)));
+
+    // exactly at the limit is not cut short
+    let (id, _) = upload_csv(&app, "id,name\n1,a\n2,b\n3,c\n").await;
+    patch(&app, &format!("/datasets/{id}/configure"), json!({ "source": { "max_rows": 3 } })).await;
+    let (_, imported) = patch(&app, &format!("/datasets/{id}/import"), json!({})).await;
+    assert_eq!((imported["num_rows"].as_i64(), imported["truncated"].as_bool()), (Some(3), Some(false)), "{imported}");
+}
+
+#[tokio::test]
+async fn a_field_can_be_left_out_of_rows_where_it_is_empty() {
+    let app = app().await;
+    let csv = "id,note,qty,width,height,kept,ok,day\n1,hello,5,2,3,x,yes,2024-01-02\n2,,n/a,,,,maybe,soon\n3,,,,,,,\n";
+    let (id, _) = upload_csv(&app, csv).await;
+    let mapping = json!({ "fields": [
+        { "source": "note", "omit_empty": true },
+        { "source": "qty", "type": "integer", "omit_empty": true },
+        { "source": "width", "path": "size.width", "type": "integer", "omit_empty": true },
+        { "source": "height", "path": "size.height", "type": "integer", "omit_empty": true },
+        { "source": "ok", "type": "boolean", "omit_empty": true },
+        { "source": "day", "type": "date", "omit_empty": true }
+    ] });
+    let (status, body) = patch(&app, &format!("/datasets/{id}/configure"), mapping).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let rows = &body["preview"]["rows"];
+    assert_eq!(rows[0]["note"], "hello");
+    assert_eq!((rows[0]["qty"].as_i64(), rows[0]["size"]["width"].as_i64()), (Some(5), Some(2)));
+    let second = rows[1].as_object().unwrap();
+    // empty text, values that cannot be read as the field's type, and an object left with nothing in it
+    assert_eq!((rows[0]["ok"].as_bool(), rows[0]["day"].as_str()), (Some(true), Some("2024-01-02")));
+    for gone in ["note", "qty", "size", "ok", "day"] {
+        assert!(!second.contains_key(gone), "{gone} should be left out: {}", rows[1]);
+    }
+    assert!(second.contains_key("kept"), "a column without the option keeps its key: {}", rows[1]);
+    // a blank date cell is empty too, not a made-up date
+    let third = rows[2].as_object().unwrap();
+    for gone in ["note", "qty", "size", "ok", "day"] {
+        assert!(!third.contains_key(gone), "{gone} should be left out: {}", rows[2]);
+    }
+
+    let (status, imported) = patch(&app, &format!("/datasets/{id}/import"), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{imported}");
+    let stored = get(&app, &format!("/datasets/{id}")).await;
+    let second = stored["rows"][1].as_object().unwrap();
+    assert!(!second.contains_key("note") && !second.contains_key("qty") && !second.contains_key("size"), "{}", stored["rows"][1]);
+}

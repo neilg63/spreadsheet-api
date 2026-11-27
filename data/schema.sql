@@ -391,7 +391,7 @@ CREATE TABLE service_meta (
 INSERT INTO plans (id, name, rank, imports_per_hour, max_rows_per_import, max_collections, max_endpoints,
                    mapping_window_secs, source_retention_secs, dataset_ttl_secs, endpoint_ttl_secs, keep_revisions, features)
 VALUES
-    ('guest', 'Guest', 0, 5, 1000, 5, 3, 1800, 1800, 86400, 86400, 1,
+    ('guest', 'Guest', 0, 30, 1000, 25, 3, 1800, 1800, 86400, 86400, 1,
      '["filter", "sort"]'),
     ('registered', 'Registered', 1, 30, 20000, 50, 20, 604800, 86400, 7776000, 7776000, 2,
      '["filter", "sort", "search", "custom_endpoints", "custom_slug", "custom_schema", "links"]'),

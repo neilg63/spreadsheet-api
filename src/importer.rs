@@ -291,16 +291,15 @@ async fn run_import(
     previous: Option<&str>,
 ) -> ApiResult<Value> {
     let mut progress = Progress::default();
-    // scan one row past the plan limit to tell "exactly at the limit" from "over it"
+    // scan one row past the limit to tell "exactly at the limit" from "over it": a longer
+    // worksheet is imported as far as the limit, and the response says it was cut short
     let (rx, reader_task) = reader::stream(opts, max_rows.saturating_add(1));
     let tidies = resolved.tidies();
+    let mut truncated = false;
     while let Ok(row) = rx.recv().await {
         if progress.next_row >= max_rows as i64 {
-            drop(rx);
-            let _ = reader_task.await;
-            return Err(ApiError::Rejected(format!(
-                "the worksheet has more than {max_rows} rows, the most your plan allows per import"
-            )));
+            truncated = true;
+            break;
         }
         let mut data: Map<String, Value> = row.into_iter().collect();
         if tidies {
@@ -313,6 +312,7 @@ async fn run_import(
             progress.flush(db, &dataset.id).await?;
         }
     }
+    drop(rx);
     reader_task.await.map_err(|e| ApiError::Internal(format!("reader task failed: {e}")))??;
     progress.flush(db, &dataset.id).await?;
     let imported = progress.inserted;
@@ -334,6 +334,8 @@ async fn run_import(
         "mode": if mode == ImportMode::Upsert { "upsert" } else { "replace" },
         "rows_imported": imported,
         "rows_retained": retained,
+        "truncated": truncated,
+        "row_limit": max_rows,
         "num_rows": progress.inserted,
         "num_invalid": progress.invalid,
         "invalid_rows": progress.invalid_samples,

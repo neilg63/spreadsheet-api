@@ -228,6 +228,11 @@ pub struct FieldMapping {
     /// Drop this column from the output.
     #[serde(skip_serializing_if = "is_false")]
     pub exclude: bool,
+    /// Leave the key out of a row whose cell is empty: null (nothing there, or nothing
+    /// readable as the field's type), or for text an empty string. `omit_nulls` does
+    /// this for nulls in every column.
+    #[serde(skip_serializing_if = "is_false")]
+    pub omit_empty: bool,
 }
 
 /// Placeholder patterns: `file_[n]` -> `files[]`, `sales_{region}` -> `sales.{region}`,
@@ -463,6 +468,39 @@ pub struct ResolvedMapping {
     pub filter: Option<FilterCondition>,
     /// natural key -> output path, for declared fields with a plain path
     pub field_paths: Vec<(usize, String)>,
+    /// Output paths left out of a row when their value is empty, and what a value there is.
+    pub omit_empty: Vec<(Vec<String>, Filled)>,
+}
+
+/// What counts as a value in a field that is left out when empty. Anything else is
+/// empty: a cell with nothing in it, or with something its type cannot read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Filled {
+    /// A number: the library leaves unreadable text such as `n/a` as it found it.
+    Number,
+    /// `true` or `false`.
+    Boolean,
+    /// Anything but null, an empty string or a list of them: text, dates and times
+    /// (which are null when unreadable), lists, and columns of no set type.
+    Any,
+}
+
+impl Filled {
+    fn of(format: &Format) -> Self {
+        match format {
+            Format::Integer | Format::Decimal(_) | Format::Float => Self::Number,
+            Format::Boolean | Format::Truthy | Format::TruthyCustom(_) => Self::Boolean,
+            _ => Self::Any,
+        }
+    }
+
+    fn is_empty(self, value: &Value) -> bool {
+        match self {
+            Self::Number => !value.is_number(),
+            Self::Boolean => !value.is_boolean(),
+            Self::Any => is_blank(value),
+        }
+    }
 }
 
 /// A list of objects that columns build, one item per column or set of columns: where
@@ -484,6 +522,21 @@ fn drop_blank_items(at: &mut Map<String, Value>, path: &[String], labels: &[Stri
         }),
         _ => {}
     }
+}
+
+/// Removes the value at `path` when it is empty, then any object that leaves empty.
+/// Returns whether `at` is now empty because of it.
+fn drop_empty_value(at: &mut Map<String, Value>, path: &[String], filled: Filled) -> bool {
+    let Some((first, rest)) = path.split_first() else { return false };
+    let gone = match at.get_mut(first) {
+        Some(Value::Object(inner)) if !rest.is_empty() => drop_empty_value(inner, rest, filled),
+        Some(value) if rest.is_empty() => filled.is_empty(value),
+        _ => false,
+    };
+    if gone {
+        at.remove(first);
+    }
+    gone && at.is_empty()
 }
 
 /// Nothing to show: an empty cell, or a value made only of them.
@@ -542,11 +595,14 @@ impl ResolvedMapping {
         for list in self.record_lists() {
             drop_blank_items(row, &list.path, &list.labels);
         }
+        for (path, filled) in &self.omit_empty {
+            drop_empty_value(row, path, *filled);
+        }
     }
 
     /// Whether `tidy` can change a row.
     pub fn tidies(&self) -> bool {
-        !self.record_lists().is_empty()
+        !self.omit_empty.is_empty() || !self.record_lists().is_empty()
     }
 }
 
@@ -659,6 +715,7 @@ impl MappingDoc {
                 (None, Some(field_type)) => field_type.to_format(field.precision),
                 (None, None) => Format::Auto,
             };
+            let filled = Filled::of(&format);
             let mut column = Column::from_source_key_with_format(
                 &natural_key,
                 None,
@@ -673,6 +730,9 @@ impl MappingDoc {
                 (None, None) => None,
             };
             if let Some(path) = field.output_path(&natural_key) {
+                if field.omit_empty {
+                    resolved.omit_empty.push((path.split('.').map(|s| s.trim().to_string()).collect(), filled));
+                }
                 resolved.field_paths.push((i, path));
             }
             resolved.columns.push(column);

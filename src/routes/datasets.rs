@@ -402,7 +402,13 @@ async fn process_upload(state: &AppState, caller: &Caller, file: &SavedFile, sou
         }
     }
     if datasets.is_empty() {
-        let reasons: Vec<String> = skipped.iter().filter_map(|s| s["reason"].as_str().map(str::to_string)).collect();
+        // every worksheet often fails for one reason, which is worth saying once
+        let mut reasons: Vec<String> = vec![];
+        for reason in skipped.iter().filter_map(|s| s["reason"].as_str()) {
+            if !reasons.iter().any(|r| r == reason) {
+                reasons.push(reason.to_string());
+            }
+        }
         return Err(ApiError::Unprocessable(format!("no worksheet could be read: {}", reasons.join("; "))));
     }
     Ok(json!({
