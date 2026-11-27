@@ -6,3 +6,4 @@ pub mod key_pattern;
 pub mod mapping;
 pub mod reader;
 pub mod spec;
+pub mod suggest;

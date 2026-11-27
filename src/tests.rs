@@ -645,3 +645,110 @@ async fn filters_compare_by_type_and_ignore_case_in_any_alphabet() {
     assert_eq!(names(get(&app, &format!("/datasets/{id}?q=eclair")).await), ["Éclair"], "search ignores accents and case");
     assert_eq!(get(&app, &format!("/datasets/{id}?q=%22%20OR%20*")).await["total"], 0, "search syntax in the words is inert");
 }
+
+#[tokio::test]
+async fn pattern_rules_nest_columns_that_start_or_end_the_same() {
+    let app = app().await;
+    let csv = "country,sales_west,sales_east,beef_consumption_per_capita,fish_consumption_per_capita\nFR,67.987,49.163,23.1,33.5\nJP,12.5,80.25,9.7,45.2\n";
+    let mut body = b"--XBOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"food.csv\"\r\n\r\n".to_vec();
+    body.extend(csv.as_bytes());
+    body.extend(b"\r\n--XBOUNDARY--\r\n");
+    let request = Request::post("/datasets/upload").header("content-type", "multipart/form-data; boundary=XBOUNDARY").body(Body::from(body)).unwrap();
+    let (status, uploaded) = call(&app, request).await;
+    assert_eq!(status, StatusCode::OK, "{uploaded}");
+    let sheet = &uploaded["datasets"][0];
+    let id = sheet["dataset_id"].as_str().unwrap().to_string();
+
+    // the sheet's own column names suggest both rules
+    let suggested: Vec<(&str, &str)> =
+        sheet["pattern_suggestions"].as_array().unwrap().iter().map(|s| (s["source"].as_str().unwrap(), s["target"].as_str().unwrap())).collect();
+    assert_eq!(suggested, [("{name}_consumption_per_capita", "consumption_per_capita.{name}"), ("sales_{name}", "sales.{name}")]);
+    assert_eq!(sheet["pattern_suggestions"][1]["columns"], json!(["sales_west", "sales_east"]));
+
+    let mapping = json!({ "patterns": [
+        { "source": "sales_{region}", "target": "sales.{region}" },
+        { "source": "{product}_consumption_per_capita", "target": "consumption_per_capita.{product}" }
+    ] });
+    let (status, body) = patch(&app, &format!("/datasets/{id}/configure"), mapping).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["preview"]["rows"][0],
+        json!({ "country": "FR", "sales": { "west": 67.987, "east": 49.163 }, "consumption_per_capita": { "beef": 23.1, "fish": 33.5 } })
+    );
+    let (status, body) = patch(&app, &format!("/datasets/{id}/import"), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let rows = get(&app, &format!("/datasets/{id}?sort=-sales.east")).await;
+    assert_eq!(rows["rows"][0]["consumption_per_capita"], json!({ "beef": 9.7, "fish": 45.2 }));
+}
+
+/// Uploads `csv` as a one-sheet file and returns the app's id for it.
+async fn upload_csv(app: &Router, csv: &str) -> (String, Value) {
+    let mut body = b"--XBOUNDARY\r\nContent-Disposition: form-data; name=\"file\"; filename=\"sheet.csv\"\r\n\r\n".to_vec();
+    body.extend(csv.as_bytes());
+    body.extend(b"\r\n--XBOUNDARY--\r\n");
+    let request = Request::post("/datasets/upload").header("content-type", "multipart/form-data; boundary=XBOUNDARY").body(Body::from(body)).unwrap();
+    let (status, uploaded) = call(app, request).await;
+    assert_eq!(status, StatusCode::OK, "{uploaded}");
+    let sheet = uploaded["datasets"][0].clone();
+    (sheet["dataset_id"].as_str().unwrap().to_string(), sheet)
+}
+
+#[tokio::test]
+async fn pattern_rules_build_lists_and_leave_out_empty_cells() {
+    let app = app().await;
+    let csv = "id,filename_1,filename_2,filename_3,sales_de,sales_fr,sales_it\n1,abc.jpg,def.jpg,ghi.jpg,398373.98,832637.98,647631.98\n2,jkl.jpg,,mno.jpg,10.5,,30\n3,,,,,,\n";
+    let (id, _) = upload_csv(&app, csv).await;
+    let mapping = json!({ "patterns": [
+        { "source": "filename_{n}", "target": "filenames[]" },
+        { "source": "sales_{cc}", "target": "sales[]{cc}{value}" }
+    ] });
+    let (status, body) = patch(&app, &format!("/datasets/{id}/configure"), mapping).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let rows = &body["preview"]["rows"];
+    assert_eq!(
+        rows[0],
+        json!({ "id": 1, "filenames": ["abc.jpg", "def.jpg", "ghi.jpg"], "sales": [
+            { "cc": "de", "value": 398373.98 }, { "cc": "fr", "value": 832637.98 }, { "cc": "it", "value": 647631.98 }
+        ] })
+    );
+    assert_eq!(rows[1], json!({ "id": 2, "filenames": ["jkl.jpg", "mno.jpg"], "sales": [{ "cc": "de", "value": 10.5 }, { "cc": "it", "value": 30 }] }));
+    assert_eq!(rows[2], json!({ "id": 3, "filenames": [], "sales": [] }));
+
+    // the stored rows are the same, and a pattern in `exclude` leaves out every column it fits
+    let mapping = json!({ "patterns": [{ "source": "sales_{cc}", "target": "sales[].{cc}{value}" }], "exclude": ["filename_*"] });
+    let (status, body) = patch(&app, &format!("/datasets/{id}/configure"), mapping).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = patch(&app, &format!("/datasets/{id}/import"), json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let stored = get(&app, &format!("/datasets/{id}")).await;
+    assert_eq!(stored["rows"][1], json!({ "id": 2, "sales": [{ "cc": "de", "value": 10.5 }, { "cc": "it", "value": 30 }] }));
+}
+
+#[tokio::test]
+async fn home_lists_every_route_with_its_method_and_parameters() {
+    let app = app().await;
+    let home = get(&app, "/").await;
+    let routes = home["routes"].as_object().unwrap();
+    for (name, route) in routes {
+        assert!(route["method"].is_string() && route["path"].is_string() && route["description"].is_string(), "{name}: {route}");
+        // every `{name}` in a path is explained
+        let path = route["path"].as_str().unwrap();
+        for part in path.split('/').filter(|p| p.starts_with('{')) {
+            assert!(route["path_params"][part.trim_matches(['{', '}'])].is_string(), "{name} does not explain {part}");
+        }
+    }
+    let listed: Vec<(&str, &str)> = routes.values().map(|r| (r["method"].as_str().unwrap(), r["path"].as_str().unwrap())).collect();
+    for expected in [
+        ("GET", "/"), ("POST", "/datasets/upload"), ("GET", "/datasets"), ("GET", "/datasets/{id}"), ("GET", "/datasets/{id}/export"),
+        ("GET", "/datasets/{id}/preview"), ("PATCH", "/datasets/{id}/configure"), ("PATCH", "/datasets/{id}/import"),
+        ("PATCH", "/datasets/{id}/access"), ("GET", "/auth/me"), ("GET", "/mapping/options"),
+    ] {
+        assert!(listed.contains(&expected), "{expected:?} is not listed");
+    }
+    assert_eq!(routes["dataset"]["query_params"].as_object().unwrap().len(), 7);
+    assert!(!routes.contains_key("login"), "sign-in routes exist only in demo mode");
+
+    let demo = get(&app_with(demo_settings()).await, "/").await;
+    assert_eq!(demo["routes"]["login"]["path"], "/auth/{provider}/login");
+    assert_eq!(demo["routes"]["logout"]["method"], "POST");
+}

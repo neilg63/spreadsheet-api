@@ -126,6 +126,13 @@ pub async fn preview(
             mapped_opts.max = Some(margin + if resolved.filter.is_some() { (n * 50).max(2_000) } else { n });
             mapped_opts.limit = Some(n);
             preview.rows = to_values(&read(mapped_opts).await?, n as usize);
+            if resolved.tidies() {
+                for row in &mut preview.rows {
+                    if let Value::Object(fields) = row {
+                        resolved.tidy(fields);
+                    }
+                }
+            }
         }
     }
     Ok(Ok(preview))

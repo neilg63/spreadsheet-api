@@ -29,7 +29,7 @@ Formats: `xlsx`, `xlsm`, `xls`, `xlsb`, `ods`, `csv`, `tsv`, and semicolon-separ
 Also available: `GET /datasets/{id}/export?format=json|jsonl` (every row, streamed as a
 download), `PATCH /datasets/{id}/access` (who may read the rows; see Access tokens), `GET /datasets` (the caller's upload history), `GET /auth/me` (account type,
 profile, allowance and sign-in links), `GET /mapping/options` (the value lists for the mapping
-and filter widgets), and `GET /` (a list of all routes and the active mode).
+and filter widgets), and `GET /` (the service's limits, the active mode, and every route by name with its method, path, path, query and body parameters and who may call it).
 
 ```bash
 curl -F file=@catalogue.xlsx localhost:3000/datasets/upload
@@ -218,8 +218,8 @@ typos get caught. Validation errors come back together, each tied to the widget 
 | `fields[].type` / `format` / `precision` | `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `time`, `array`, or any library format such as `d2`, `truthy(si,no)`, `dt:%d/%m/%Y`, `int[](\|)` (`-k col\|fmt`). |
 | `fields[].default`, `datetime`, `decimal_comma` | Per-column overrides. |
 | `fields[].required`, `filterable`, `sortable`, `searchable`, `description` | Schema and query metadata. Rows missing a required value are imported but flagged invalid. |
-| `patterns` | Placeholder patterns for columns with part of their name in common. A placeholder (`[n]` a number, `{name}` text, `*` anything) stands where the names differ, at the start, the end or in the middle, and the target refers to it: `file_[n]`→`files[]`, `sales_{region}`→`sales.{region}`, `{fuel}_price`→`price.{fuel}`, `sales_[year]`→`sales[].{year}{amount}`, `{fuel}_price_note_{n}`→`price_{fuel}`. |
-| `exclude`, `exclude_paths` | Drop columns or ranges, or drop nested output paths (`-k -col`, `-K`). |
+| `patterns` | Placeholder patterns for columns with part of their name in common. A placeholder (`[n]` a number, `{name}` text, `*` anything) stands where the names differ, at the start, the end or in the middle, and the target refers to it: `file_[n]`→`files[]`, `sales_{region}`→`sales.{region}`, `{fuel}_price`→`price.{fuel}`, `sales_[year]`→`sales[].{year}{amount}` (the `.` may be left out: `sales[]{year}{amount}`), `{fuel}_price_note_{n}`→`price_{fuel}`. An empty cell adds nothing to a list: no value in `files[]`, and no `{ "year": 2024 }` item in a list of objects. | The upload, preview and configure responses list the patterns a sheet's own column names suggest as `pattern_suggestions`: columns that start or end the same, each with a ready `source` and `target` and the `columns` it matches.
+| `exclude`, `exclude_paths` | Drop columns, ranges (`width..depth`) or every column a pattern fits (`*_note`, `internal_*`), or drop nested output paths (`-k -col`, `-K`). |
 | `filter` | Only import rows that match. Accepts either a rule tree (as above) or spread-cli text such as `"age >= 18 and name ILIKE 'a%'"` (`-f`). |
 | `omit_nulls` | Drop null values (`-X`). |
 | `unmapped` | Set to `drop` to output only the listed columns. |
@@ -281,6 +281,7 @@ src/sheet/mapping.rs     mapping document → spreadsheet-to-json OptionSet
 src/sheet/reader.rs      previews and streaming reads (on the blocking thread pool)
 src/sheet/spec.rs        type inference, field_spec, JSON Schema
 src/sheet/key_pattern.rs   placeholder patterns: began as spread-cli's, now also matches by suffix and middle
+src/sheet/suggest.rs       pattern rules suggested by the column names
 src/sheet/filter_pattern.rs   ported verbatim from spread-cli
 src/importer.rs          batched import, primary keys, validation, upsert merge
 src/query.rs             filter/sort/search → parameterised SQL over the JSON rows

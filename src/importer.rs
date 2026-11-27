@@ -293,6 +293,7 @@ async fn run_import(
     let mut progress = Progress::default();
     // scan one row past the plan limit to tell "exactly at the limit" from "over it"
     let (rx, reader_task) = reader::stream(opts, max_rows.saturating_add(1));
+    let tidies = resolved.tidies();
     while let Ok(row) = rx.recv().await {
         if progress.next_row >= max_rows as i64 {
             drop(rx);
@@ -301,7 +302,10 @@ async fn run_import(
                 "the worksheet has more than {max_rows} rows, the most your plan allows per import"
             )));
         }
-        let data: Map<String, Value> = row.into_iter().collect();
+        let mut data: Map<String, Value> = row.into_iter().collect();
+        if tidies {
+            resolved.tidy(&mut data);
+        }
         let pk = rules.primary_key(&data);
         let errors = rules.errors(&data);
         progress.push(data, rules, pk, errors);

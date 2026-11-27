@@ -8,7 +8,8 @@
 //! - `file_[n]` -> `files[]` -- sequential columns into a plain array (`KeySegment::PlainArray`)
 //! - `sales_{region}` -> `sales.{region}` -- columns into an object keyed by the capture
 //! - `sales_[year]` -> `sales[].{year}{amount}` -- columns into an array of
-//!   `{year, amount}` items (`KeySegment::Array` + `KeySegment::InnerObject`)
+//!   `{year, amount}` items (`KeySegment::Array` + `KeySegment::InnerObject`); the `.`
+//!   may be left out, `sales[]{year}{amount}`
 //! - `{fuel}_price` -> `price.{fuel}` -- the same, for columns that share an ending
 //! - `{fuel}_price_note_{n}` -> `price_{fuel}` -- a rename that keeps one capture and
 //!   drops the other
@@ -179,8 +180,10 @@ enum TargetToken {
 }
 
 /// Splits `target` on `.` and classifies each segment. `None` if any segment is empty.
+/// The `.` between a list and its item may be left out: `sales[]{cc}{value}` reads the
+/// same as `sales[].{cc}{value}`.
 fn parse_target_tokens(target: &str) -> Option<Vec<TargetToken>> {
-    target.split('.').map(parse_target_segment).collect()
+    target.trim().replace("[]{", "[].{").split('.').map(parse_target_segment).collect()
 }
 
 fn parse_target_segment(segment: &str) -> Option<TargetToken> {
@@ -329,6 +332,13 @@ pub fn expand_pattern_entry(source: &str, target: &str, format: &Format, natural
         .collect();
 
     Some(columns)
+}
+
+/// The columns a source pattern matches, in sheet order, for rules that need no target
+/// (leaving columns out). `None` if `source` is not a pattern.
+pub fn matching_keys(source: &str, natural_keys: &[String]) -> Option<Vec<String>> {
+    let parts = parse_source_pattern(source)?;
+    Some(natural_keys.iter().filter(|key| capture_values(&parts, key).is_some()).cloned().collect())
 }
 
 /// Resolves a `--keys '-identifier'` column-suppression entry against the real, already
@@ -502,6 +512,22 @@ mod tests {
         assert!(parse_source_pattern("x_{a").is_none()); // unclosed
         let natural_keys = strs(&["petrol_price"]);
         assert!(expand_pattern_entry("{fuel}_price", "price_{grade}", &Format::Auto, &natural_keys).is_none());
+    }
+
+    #[test]
+    fn test_the_dot_between_a_list_and_its_item_is_optional() {
+        let natural_keys = strs(&["sales_de", "sales_fr"]);
+        let cols = expand_pattern_entry("sales_{cc}", "sales[]{cc}{value}", &Format::Float, &natural_keys).unwrap();
+        assert!(matches!(cols[1].key.as_ref().unwrap(), KeySegment::Array(c, id, f, next)
+            if &**c == "sales" && *id == Identifier::from_string("fr") && &**f == "cc" && matches!(&**next, KeySegment::Simple(k) if &**k == "value")));
+    }
+
+    #[test]
+    fn test_matching_keys_lists_the_columns_a_pattern_takes() {
+        let natural_keys = strs(&["id", "price_note", "tax_note", "note"]);
+        assert_eq!(matching_keys("*_note", &natural_keys), Some(strs(&["price_note", "tax_note"])));
+        assert_eq!(matching_keys("{x}_missing", &natural_keys), Some(vec![]));
+        assert_eq!(matching_keys("note", &natural_keys), None);
     }
 
     #[test]

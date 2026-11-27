@@ -10,7 +10,7 @@
 use std::{collections::HashSet, path::Path, str::FromStr, sync::Arc};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use spreadsheet_to_json::{
     Column, ColumnMatch, DateTimeMode, FieldNameMode, FilterCondition, FilterMatch, Format, KeySegment,
     MatchMode, OptionSet, heck::ToSnakeCase,
@@ -38,7 +38,8 @@ pub struct MappingDoc {
     pub fields: Vec<FieldMapping>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub patterns: Vec<PatternMapping>,
-    /// Source columns to drop: natural keys, A1 letters, column numbers or `start..end` ranges.
+    /// Source columns to drop: natural keys, A1 letters, column numbers, `start..end`
+    /// ranges, or patterns for every column that fits (`*_note`, `internal_*`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub exclude: Vec<String>,
     /// Dot-separated output paths to drop after mapping, e.g. `size.depth` or
@@ -464,12 +465,88 @@ pub struct ResolvedMapping {
     pub field_paths: Vec<(usize, String)>,
 }
 
+/// A list of objects that columns build, one item per column or set of columns: where
+/// it is in the row, and the fields that only label an item (`year`, `cc`).
+#[derive(Debug, Clone, PartialEq)]
+struct RecordList {
+    path: Vec<String>,
+    labels: Vec<String>,
+}
+
+/// Follows `path` to a list and leaves out its items whose fields, other than `labels`, are all blank.
+fn drop_blank_items(at: &mut Map<String, Value>, path: &[String], labels: &[String]) {
+    let Some((key, rest)) = path.split_first() else { return };
+    match at.get_mut(key) {
+        Some(Value::Object(inner)) if !rest.is_empty() => drop_blank_items(inner, rest, labels),
+        Some(Value::Array(items)) if rest.is_empty() => items.retain(|item| match item {
+            Value::Object(fields) => fields.iter().any(|(name, value)| !labels.contains(name) && !is_blank(value)),
+            _ => true,
+        }),
+        _ => {}
+    }
+}
+
+/// Nothing to show: an empty cell, or a value made only of them.
+fn is_blank(value: &Value) -> bool {
+    match value {
+        Value::Null => true,
+        Value::String(text) => text.is_empty(),
+        Value::Array(items) => items.iter().all(is_blank),
+        Value::Object(fields) => fields.values().all(is_blank),
+        _ => false,
+    }
+}
+
 impl ResolvedMapping {
     pub fn apply(&self, opts: &mut OptionSet, doc: &MappingDoc) {
         opts.rows.columns = self.columns.clone();
         opts.rows.excluded_paths = self.excluded_paths.clone();
         opts.rows.filter_rules = self.filter.clone();
         opts.rows.omit_null_values = doc.omit_nulls;
+    }
+
+    /// The lists of objects the columns build, at any depth of plain nesting.
+    fn record_lists(&self) -> Vec<RecordList> {
+        let mut lists: Vec<RecordList> = Vec::new();
+        for column in &self.columns {
+            let mut path = Vec::new();
+            let mut segment = column.key.as_ref();
+            while let Some(KeySegment::Object(key, next)) = segment {
+                path.push(key.to_string());
+                segment = Some(next.as_ref());
+            }
+            let Some(KeySegment::Array(container, _, key_field, next)) = segment else { continue };
+            path.push(container.to_string());
+            let mut labels = vec![key_field.to_string()];
+            let mut inner = next.as_ref();
+            while let KeySegment::InnerObject(_, field, after) = inner {
+                labels.push(field.to_string());
+                inner = after.as_ref();
+            }
+            match lists.iter_mut().find(|list| list.path == path) {
+                Some(list) => labels.into_iter().for_each(|label| {
+                    if !list.labels.contains(&label) {
+                        list.labels.push(label)
+                    }
+                }),
+                None => lists.push(RecordList { path, labels }),
+            }
+        }
+        lists
+    }
+
+    /// Finishes a mapped row: an item of a list of objects is left out when the cells
+    /// it was built from are all empty, so `sales_fr` being blank gives no
+    /// `{ "cc": "fr" }`. The core library does the same for plain lists.
+    pub fn tidy(&self, row: &mut Map<String, Value>) {
+        for list in self.record_lists() {
+            drop_blank_items(row, &list.path, &list.labels);
+        }
+    }
+
+    /// Whether `tidy` can change a row.
+    pub fn tidies(&self) -> bool {
+        !self.record_lists().is_empty()
     }
 }
 
@@ -643,6 +720,13 @@ impl MappingDoc {
                     }
                     (Some(_), Some(_)) => errors.push(mapping_error(format!("exclude[{i}]"), "the range is reversed")),
                     _ => errors.push(mapping_error(format!("exclude[{i}]"), "a range end matches no column")),
+                }
+            } else if let Some(keys) = key_pattern::matching_keys(entry, natural_keys) {
+                // a pattern leaves out every column it fits that nothing above has placed
+                for key in keys {
+                    if claimed.insert(key.clone()) {
+                        resolved.columns.push(key_pattern::build_suppression_column(&key));
+                    }
                 }
             } else if let Some(key) = resolve_source(entry, natural_keys) {
                 // an unmatched single column is ignored, as in spread-cli: the same mapping

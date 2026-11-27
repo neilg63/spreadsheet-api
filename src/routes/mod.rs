@@ -122,6 +122,140 @@ async fn welcome(State(state): State<AppState>) -> Json<Value> {
             "intake": ["multipart", "url", if state.auth.shared_dir.is_some() { "path" } else { "path (disabled)" }],
         }),
     };
+    let id = json!({ "id": "The dataset's id, from the upload response" });
+    let rows = "Rows in the preview that comes back";
+    let mut routes = json!({
+        "home": {
+            "method": "GET",
+            "path": "/",
+            "access": "anyone",
+            "description": "This document: the service's limits, how callers are identified, and every route"
+        },
+        "upload": {
+            "method": "POST",
+            "path": "/datasets/upload",
+            "type": "multipart/form-data, or application/json in service mode",
+            "query_params": { "rows": rows },
+            "body_params": {
+                "file": "multipart: the spreadsheet (xlsx, xlsm, xlsb, xls, ods, csv, tsv)",
+                "source": "Optional JSON on how to read the file: header_row, data_start, sheet options (see /mapping/options)",
+                "url": "JSON, service mode: download the file from this address instead",
+                "path": "JSON, service mode: take the file from the shared upload directory instead",
+                "filename": "JSON, service mode: the name to record and to take the format from"
+            },
+            "access": "anyone; an access token needs upload",
+            "description": "Validate and store a spreadsheet. Returns one dataset per worksheet, each with its columns, suggested pattern rules and a preview"
+        },
+        "preview": {
+            "method": "GET",
+            "path": "/datasets/{id}/preview",
+            "path_params": id,
+            "query_params": { "rows": rows },
+            "access": "the owner; an access token needs configure",
+            "description": "Read the source file again with the saved mapping"
+        },
+        "configure": {
+            "method": "PATCH",
+            "path": "/datasets/{id}/configure",
+            "type": "application/json",
+            "path_params": id,
+            "query_params": { "dry_run": "true to validate and preview without saving", "rows": rows },
+            "body_params": {
+                "source": "How the sheet is read: header row, first data row, column naming",
+                "fields": "Columns to rename, nest, cast, default, require or leave out",
+                "patterns": "Rules for columns that share part of their name: sales_{region} to sales.{region}",
+                "exclude": "Columns to leave out: names, start..end ranges or patterns",
+                "exclude_paths": "Nested output paths to leave out",
+                "primary_key": "Fields that identify a row, for upserts",
+                "filter": "Rows to keep at import",
+                "collection": "The collection the rows are published under",
+                "unmapped": "keep (default) or drop the columns nothing mentions",
+                "omit_nulls": "true to leave empty values out of each row"
+            },
+            "access": "the owner; an access token needs configure",
+            "description": "Save the mapping document as a schema version and return a fresh preview. GET /mapping/options lists the values each part accepts"
+        },
+        "import": {
+            "method": "PATCH",
+            "path": "/datasets/{id}/import",
+            "type": "application/json",
+            "path_params": id,
+            "body_params": { "mode": "replace (default) or upsert, which needs a primary key" },
+            "access": "the owner; an access token needs import",
+            "description": "Import every row and publish the endpoint. The source file is deleted once all its worksheets are imported"
+        },
+        "access": {
+            "method": "PATCH",
+            "path": "/datasets/{id}/access",
+            "type": "application/json",
+            "path_params": id,
+            "body_params": { "visibility": "unlisted (default: anyone with the id), public or private (the owner and access tokens only)" },
+            "access": "the owner; an access token needs configure",
+            "description": "Set who may read the imported rows"
+        },
+        "dataset": {
+            "method": "GET",
+            "path": "/datasets/{id}",
+            "path_params": id,
+            "query_params": {
+                "filter": "JSON, MongoDB style {\"price\": {\"$gt\": 5}} or a rule tree {\"field\", \"op\", \"value\"}",
+                "sort": "Fields to sort by: price,-name or price:desc,name:asc",
+                "q": "Full-text search over the fields marked searchable",
+                "limit": format!("Rows per page: {} by default, {} at most", config().default_page_size, config().max_page_size),
+                "start": "Offset of the first row",
+                "page": "1-based page, as an alternative to start",
+                "include_invalid": "true to include rows that failed validation"
+            },
+            "access": "anyone with the id unless private; an access token needs read",
+            "description": "Query the imported rows"
+        },
+        "export": {
+            "method": "GET",
+            "path": "/datasets/{id}/export",
+            "path_params": id,
+            "query_params": { "format": "json (one array, the default) or jsonl (one row per line)", "include_invalid": "true to include rows that failed validation" },
+            "access": "anyone with the id unless private; an access token needs export",
+            "description": "Download every imported row"
+        },
+        "datasets": {
+            "method": "GET",
+            "path": "/datasets",
+            "query_params": { "limit": "Datasets per page", "start": "Offset of the first one", "page": "1-based page, as an alternative to start" },
+            "access": "signed-in callers, not guests",
+            "description": "The caller's datasets, newest first"
+        },
+        "me": {
+            "method": "GET",
+            "path": "/auth/me",
+            "access": "anyone",
+            "description": "The caller's account type, profile, allowance, grants and sign-in links"
+        },
+        "mapping_options": {
+            "method": "GET",
+            "path": "/mapping/options",
+            "access": "anyone",
+            "description": "The values a mapping document and a filter accept, for building forms"
+        }
+    });
+    if state.auth.mode == AuthMode::Demo {
+        let provider = json!({ "provider": state.auth.providers.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(" or ") });
+        routes["login"] = json!({
+            "method": "GET",
+            "path": "/auth/{provider}/login",
+            "path_params": provider,
+            "query_params": { "return_to": "Where to send the browser once signed in" },
+            "access": "anyone",
+            "description": "Start signing in: redirects to the provider"
+        });
+        routes["login_callback"] = json!({
+            "method": "GET",
+            "path": "/auth/{provider}/callback",
+            "path_params": provider,
+            "access": "the provider's redirect",
+            "description": "Finish signing in: sets the session cookie and keeps the guest's uploads"
+        });
+        routes["logout"] = json!({ "method": "POST", "path": "/auth/logout", "access": "signed-in callers", "description": "End the session" });
+    }
     Json(json!({
         "title": "Spreadsheet API",
         "version": env!("CARGO_PKG_VERSION"),
@@ -129,19 +263,11 @@ async fn welcome(State(state): State<AppState>) -> Json<Value> {
         "max_upload_bytes": config().max_upload_bytes,
         "preview_rows": datasets::preview_rows(None),
         "max_preview_rows": config().max_preview_rows,
+        "default_page_size": config().default_page_size,
+        "max_page_size": config().max_page_size,
         "auth": auth,
-        "routes": [
-            { "method": "POST", "path": "/datasets/upload", "query": { "rows": "rows to preview per worksheet" }, "body": "multipart: file, source (optional JSON); service mode also JSON {\"url\" | \"path\", \"filename\"?, \"source\"?}", "description": "Validate and store a spreadsheet; one dataset per worksheet with a preview of each" },
-            { "method": "GET", "path": "/datasets/{id}/preview", "query": { "rows": "rows to preview" }, "description": "Re-read the source file with the saved mapping" },
-            { "method": "PATCH", "path": "/datasets/{id}/configure", "query": { "dry_run": "true to preview without saving", "rows": "rows to preview" }, "body": "mapping document (see /mapping/options)", "description": "Save the field mapping as a schema version" },
-            { "method": "PATCH", "path": "/datasets/{id}/import", "body": "{\"mode\": \"replace\" | \"upsert\"} (optional)", "description": "Import every row; the source file is deleted once all its worksheets are imported" },
-            { "method": "PATCH", "path": "/datasets/{id}/access", "body": "{\"visibility\": \"unlisted\" | \"public\" | \"private\"}", "description": "Set who may read the rows: anyone with the id, or only the owner and access tokens that grant it" },
-            { "method": "GET", "path": "/datasets/{id}", "query": { "filter": "JSON, MongoDB style or rule tree", "sort": "price,-name", "q": "full-text search", "limit": "page size", "start": "offset", "page": "1-based page", "include_invalid": "true to include rows that failed validation" }, "description": "Query imported rows" },
-            { "method": "GET", "path": "/datasets/{id}/export", "query": { "format": "json (default) or jsonl", "include_invalid": "true to include invalid rows" }, "description": "Download every imported row" },
-            { "method": "GET", "path": "/datasets", "description": "The caller's datasets (not for guests)" },
-            { "method": "GET", "path": "/auth/me", "description": "Account type, profile, allowance and sign-in links" },
-            { "method": "GET", "path": "/mapping/options", "description": "Option values for building mapping and filter widgets" }
-        ]
+        "access_tokens": "Authorization: Bearer <JWT signed by a registered application>; its grants name the actions (read, export, upload, configure, import) it allows on which datasets",
+        "routes": routes
     }))
 }
 
