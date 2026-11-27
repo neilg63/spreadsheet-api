@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/neilg63/spreadsheet-api"
 
 [dependencies]
-spreadsheet-to-json = "0.5.1"
+spreadsheet-to-json = "0.5.2"
 axum = { version = "0.8", features = ["multipart", "macros"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "limit", "trace"] }
