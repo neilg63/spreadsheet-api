@@ -1,6 +1,6 @@
 [package]
 name = "spreadsheet-api"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 description = "Upload spreadsheets, map their worksheets to JSON with a versioned schema, and serve them as queryable Web endpoints backed by SQLite."
 license = "MIT OR Apache-2.0"
